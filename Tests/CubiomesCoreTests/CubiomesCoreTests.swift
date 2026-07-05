@@ -93,6 +93,51 @@ final class CubiomesCoreTests: XCTestCase {
         }
     }
 
+    func testBiomeInfoWrapsCubiomesMetadataHelpers() {
+        let info = CubiomesCore.biomeInfo(version: .v1_18, id: 14)
+
+        XCTAssertEqual(info.name, "mushroom_fields")
+        XCTAssertTrue(info.exists)
+        XCTAssertEqual(info.dimension, .overworld)
+        XCTAssertTrue(info.isOverworld)
+        XCTAssertNil(info.mutatedID)
+    }
+
+    func testApproximateHeightGridProducesStableShape() throws {
+        let heights = try CubiomesCore.approximateHeights(
+            version: .v1_18,
+            seed: 262,
+            dimension: .overworld,
+            originX: 0,
+            originZ: 0,
+            width: 2,
+            height: 2
+        )
+
+        XCTAssertEqual(heights.heights.count, 4)
+        XCTAssertEqual(heights.biomeIDs.count, 4)
+        XCTAssertNotNil(heights.heightAt(x: 1, z: 1))
+        XCTAssertNotNil(heights.biomeIDAt(x: 1, z: 1))
+    }
+
+    func testStructureConfigExposesNewConfiguredStructureTypes() throws {
+        let config = try CubiomesCore.structureConfig(type: .trialChambers, version: .v1_21_1)
+
+        XCTAssertEqual(config.type, .trialChambers)
+        XCTAssertEqual(config.dimension, .overworld)
+        XCTAssertEqual(config.regionSize, 34)
+        XCTAssertEqual(StructureType.trialChambers.resourceName, "trial_chambers")
+    }
+
+    func testDirectStrongholdAndSlimeAPIsReturnStableShapes() {
+        let strongholds = CubiomesCore.strongholds(version: .v1_18, seed: 262, limit: 3)
+
+        XCTAssertEqual(strongholds.count, 3)
+        XCTAssertTrue(strongholds.allSatisfy { $0.type == .stronghold && $0.dimension == .overworld })
+        _ = CubiomesCore.firstStrongholdApproximation(version: .v1_18, seed: 262)
+        _ = CubiomesCore.isSlimeChunk(seed: 262, chunkX: 0, chunkZ: 0)
+    }
+
     func testStructureOverlayAPIProducesStableFieldsInsideRect() throws {
         let rect = StructureRect(originX: -2048, originZ: -2048, width: 4096, height: 4096)
         let structures = try CubiomesCore.structures(
