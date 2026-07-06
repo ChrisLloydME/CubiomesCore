@@ -298,6 +298,248 @@ final class CubiomesCoreTests: XCTestCase {
         XCTAssertNil(CubiomesCore.climateParameterLimits(version: .v1_17, biomeID: 1))
     }
 
+    func testMapTileCombinesBiomeHeightAndStructureOverlayData() throws {
+        let tile = try CubiomesCore.mapTile(MapTileRequest(
+            version: .v1_18,
+            seed: 262,
+            dimension: .overworld,
+            originX: 0,
+            originZ: 0,
+            width: 128,
+            height: 128,
+            scale: 4,
+            includesApproximateHeights: true,
+            structureTypes: [.village]
+        ))
+
+        XCTAssertEqual(tile.biomes.ids.count, 16_384)
+        XCTAssertEqual(tile.approximateHeights?.heights.count, 16_384)
+        XCTAssertEqual(tile.biomes.idAt(x: 0, z: 0), 14)
+        XCTAssertEqual(tile.structures.first?.type, .village)
+        XCTAssertEqual(tile.structures.first?.blockX, 192)
+        XCTAssertEqual(tile.structures.first?.blockZ, 208)
+    }
+
+    func testBiomeStatisticsAndAreaFilterUseStableGridSemantics() throws {
+        let request = BiomeAreaStatisticsRequest(
+            version: .v1_18,
+            seeds: [262],
+            dimensions: [.overworld],
+            originX: -1,
+            originZ: -1,
+            width: 3,
+            height: 3,
+            scale: 1
+        )
+        let stats = try CubiomesCore.biomeAreaStatistics(request)
+
+        XCTAssertEqual(stats.count, 1)
+        XCTAssertEqual(stats[0].seed, 262)
+        XCTAssertEqual(stats[0].sampledCellCount, 9)
+        XCTAssertEqual(stats[0].countsByBiomeID[14], 9)
+        XCTAssertEqual(stats[0].distinctBiomeCount, 1)
+
+        let includeMushroom = try CubiomesCore.biomeAreaFilter(BiomeAreaFilterRequest(
+            version: .v1_18,
+            seed: 262,
+            dimension: .overworld,
+            originX: 0,
+            originZ: 0,
+            width: 1,
+            height: 1,
+            scale: 1,
+            filter: BiomeFilterSpec(requiredBiomeIDs: [14])
+        ))
+        XCTAssertTrue(includeMushroom.matched)
+        XCTAssertTrue(includeMushroom.completedFullGeneration)
+
+        let excludeMushroom = try CubiomesCore.biomeAreaFilter(BiomeAreaFilterRequest(
+            version: .v1_18,
+            seed: 262,
+            dimension: .overworld,
+            originX: 0,
+            originZ: 0,
+            width: 1,
+            height: 1,
+            scale: 1,
+            filter: BiomeFilterSpec(excludedBiomeIDs: [14])
+        ))
+        XCTAssertFalse(excludeMushroom.matched)
+    }
+
+    func testBiomeCentersReturnEmptyResultsAndValidateShape() throws {
+        let centers = try CubiomesCore.biomeCenters(BiomeCenterRequest(
+            version: .v1_18,
+            seed: 262,
+            originX: -16,
+            originZ: -16,
+            width: 32,
+            height: 32,
+            biomeID: 14,
+            minimumSize: 1,
+            tolerance: 0,
+            maximumCount: 8
+        ))
+
+        XCTAssertLessThanOrEqual(centers.count, 8)
+        XCTAssertTrue(centers.allSatisfy { $0.biomeID == 14 && $0.size > 0 })
+
+        XCTAssertThrowsError(try CubiomesCore.biomeCenters(BiomeCenterRequest(
+            version: .v1_18,
+            seed: 262,
+            originX: 0,
+            originZ: 0,
+            width: 8,
+            height: 8,
+            biomeID: 999,
+            maximumCount: 8
+        ))) { error in
+            XCTAssertEqual(error as? CubiomesError, .unsupportedBiome(id: 999))
+        }
+    }
+
+    func testLocationAndSeedFinderExposeDeterministicBatchSemantics() throws {
+        let samples = CubiomesCore.locationSamples(mode: .squareSpiral, count: 5, spacing: 16)
+        XCTAssertEqual(samples, [
+            BlockPosition(x: 0, z: 0),
+            BlockPosition(x: 16, z: 0),
+            BlockPosition(x: 16, z: 16),
+            BlockPosition(x: 0, z: 16),
+            BlockPosition(x: -16, z: 16),
+        ])
+
+        let seedMatches = try CubiomesCore.findSeeds(SeedSearchRequest(
+            version: .v1_18,
+            seeds: [1, 262],
+            dimension: .overworld,
+            conditions: [.biomeAt(relativeX: 0, relativeZ: 0, y: 63, allowedBiomeIDs: [14])]
+        ))
+        XCTAssertEqual(seedMatches, [262])
+
+        let locationMatches = try CubiomesCore.findLocations(LocationSearchRequest(
+            version: .v1_18,
+            seeds: [262],
+            dimension: .overworld,
+            positions: [BlockPosition(x: 0, z: 0), BlockPosition(x: 4096, z: 4096)],
+            conditions: [.biomeAt(relativeX: 0, relativeZ: 0, y: 63, allowedBiomeIDs: [14])],
+            maximumResults: 1
+        ))
+        XCTAssertEqual(locationMatches, [LocationSearchResult(seed: 262, position: BlockPosition(x: 0, z: 0))])
+
+        let cancelled = try CubiomesCore.findSeeds(SeedSearchRequest(
+            version: .v1_18,
+            seeds: [262],
+            dimension: .overworld,
+            conditions: [.biomeAt(relativeX: 0, relativeZ: 0, y: 63, allowedBiomeIDs: [14])]
+        ), shouldCancel: { true })
+        XCTAssertTrue(cancelled.isEmpty)
+    }
+
+    func testStructureVariantPiecesAndQuadSearchBoundaries() throws {
+        let variant = try CubiomesCore.structureVariant(
+            type: .village,
+            version: .v1_18,
+            seed: 262,
+            blockX: 192,
+            blockZ: 208,
+            biomeID: 1
+        )
+        XCTAssertEqual(variant?.type, .village)
+
+        let endPieces = try CubiomesCore.structurePieces(
+            type: .endCity,
+            version: .v1_18,
+            seed: 262,
+            chunkX: 0,
+            chunkZ: 0
+        )
+        XCTAssertLessThanOrEqual(endPieces.count, 421)
+
+        XCTAssertThrowsError(try CubiomesCore.structurePieces(
+            type: .village,
+            version: .v1_18,
+            seed: 262,
+            chunkX: 0,
+            chunkZ: 0
+        )) { error in
+            XCTAssertEqual(error as? CubiomesError, .unsupportedStructurePieces(.village))
+        }
+
+        XCTAssertThrowsError(try CubiomesCore.quadStructureClusters(QuadStructureSearchRequest(
+            type: .monument,
+            version: .v1_18,
+            seed: 262,
+            regionX: 0,
+            regionZ: 0,
+            regionWidth: 1,
+            regionHeight: 1
+        ))) { error in
+            XCTAssertEqual(error as? CubiomesError, .unsupportedQuadSearch(.monument, version: .v1_18))
+        }
+    }
+
+    func testNetherVolumeAndEndAnalysisExposeDimensionSpecificShapes() throws {
+        let volume = try CubiomesCore.netherBiomeVolume(NetherBiomeVolumeRequest(
+            seed: 262,
+            originX: 0,
+            originY: 0,
+            originZ: 0,
+            width: 2,
+            height: 2,
+            depth: 2
+        ))
+
+        XCTAssertEqual(volume.ids.count, 8)
+        XCTAssertEqual(volume.idAt(x: 0, y: 0, z: 0), 171)
+        XCTAssertEqual(volume.idAt(x: 1, y: 1, z: 1), 171)
+
+        let endChunk = CubiomesCore.endChunkAnalysis(version: .v1_18, seed: 262, chunkX: 0, chunkZ: 0)
+        XCTAssertEqual(endChunk.chunkX, 0)
+        XCTAssertEqual(endChunk.chunkZ, 0)
+        XCTAssertFalse(endChunk.isEmpty)
+
+        let heights = try CubiomesCore.endSurfaceHeights(EndSurfaceHeightGridRequest(
+            version: .v1_18,
+            seed: 262,
+            originX: 0,
+            originZ: 0,
+            width: 2,
+            height: 2
+        ))
+        XCTAssertEqual(heights.heights.count, 4)
+        XCTAssertEqual(heights.heightAt(x: 0, z: 0), 62)
+    }
+
+    func testMediumAreaStructureAndFilterRegressionDoesNotObviouslyRegress() throws {
+        let start = Date()
+        let structures = try CubiomesCore.structures(
+            version: .v1_18,
+            seed: 262,
+            dimension: .overworld,
+            types: [.village, .desertPyramid, .ruinedPortal],
+            rect: StructureRect(originX: -4096, originZ: -4096, width: 8192, height: 8192)
+        )
+        let filter = try CubiomesCore.biomeAreaFilter(BiomeAreaFilterRequest(
+            version: .v1_18,
+            seed: 262,
+            dimension: .overworld,
+            originX: -512,
+            originZ: -512,
+            width: 256,
+            height: 256,
+            scale: 4,
+            filter: BiomeFilterSpec(matchAnyBiomeIDs: [1, 14])
+        ))
+
+        XCTAssertFalse(structures.isEmpty)
+        XCTAssertEqual(structures, structures.sorted {
+            ($0.blockZ, $0.blockX, String(describing: $0.type)) <
+                ($1.blockZ, $1.blockX, String(describing: $1.type))
+        })
+        XCTAssertTrue(filter.matched)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 10.0)
+    }
+
     func testLargeAreaBiomeGenerationDoesNotObviouslyRegress() throws {
         let start = Date()
         let grid = try CubiomesCore.biomes(

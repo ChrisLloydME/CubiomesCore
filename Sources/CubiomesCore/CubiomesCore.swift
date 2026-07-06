@@ -207,6 +207,65 @@ public struct BiomeGridResult: Equatable, Sendable {
     }
 }
 
+public struct MapTileRequest: Equatable, Sendable {
+    public let version: MinecraftVersion
+    public let seed: Int64
+    public let dimension: MinecraftDimension
+    public let originX: Int32
+    public let originZ: Int32
+    public let width: Int32
+    public let height: Int32
+    public let scale: Int32
+    public let y: Int32
+    public let includesApproximateHeights: Bool
+    public let structureTypes: [StructureType]
+
+    public init(
+        version: MinecraftVersion,
+        seed: Int64,
+        dimension: MinecraftDimension,
+        originX: Int32,
+        originZ: Int32,
+        width: Int32,
+        height: Int32,
+        scale: Int32 = 4,
+        y: Int32 = 63,
+        includesApproximateHeights: Bool = false,
+        structureTypes: [StructureType] = []
+    ) {
+        self.version = version
+        self.seed = seed
+        self.dimension = dimension
+        self.originX = originX
+        self.originZ = originZ
+        self.width = width
+        self.height = height
+        self.scale = scale
+        self.y = y
+        self.includesApproximateHeights = includesApproximateHeights
+        self.structureTypes = structureTypes
+    }
+}
+
+public struct MapTileResult: Equatable, Sendable {
+    public let request: MapTileRequest
+    public let biomes: BiomeGridResult
+    public let approximateHeights: ApproximateHeightGridResult?
+    public let structures: [StructureLocation]
+
+    public init(
+        request: MapTileRequest,
+        biomes: BiomeGridResult,
+        approximateHeights: ApproximateHeightGridResult?,
+        structures: [StructureLocation]
+    ) {
+        self.request = request
+        self.biomes = biomes
+        self.approximateHeights = approximateHeights
+        self.structures = structures
+    }
+}
+
 public struct NetherBiomeGridRequest: Equatable, Sendable {
     public let seed: Int64
     public let originX: Int32
@@ -241,6 +300,56 @@ public struct NetherBiomeGridResult: Equatable, Sendable {
             return nil
         }
         return ids[Int(z * width + x)]
+    }
+}
+
+public struct NetherBiomeVolumeRequest: Equatable, Sendable {
+    public let seed: Int64
+    public let originX: Int32
+    public let originY: Int32
+    public let originZ: Int32
+    public let width: Int32
+    public let height: Int32
+    public let depth: Int32
+    public let confidence: Float
+
+    /// Creates a 3D Nether biome request at cubiomes' native 1:4 scale.
+    public init(
+        seed: Int64,
+        originX: Int32,
+        originY: Int32,
+        originZ: Int32,
+        width: Int32,
+        height: Int32,
+        depth: Int32,
+        confidence: Float = 1.0
+    ) {
+        self.seed = seed
+        self.originX = originX
+        self.originY = originY
+        self.originZ = originZ
+        self.width = width
+        self.height = height
+        self.depth = depth
+        self.confidence = confidence
+    }
+}
+
+public struct NetherBiomeVolumeResult: Equatable, Sendable {
+    public let request: NetherBiomeVolumeRequest
+    public let ids: [Int32]
+
+    public init(request: NetherBiomeVolumeRequest, ids: [Int32]) {
+        self.request = request
+        self.ids = ids
+    }
+
+    public func idAt(x: Int32, y: Int32, z: Int32) -> Int32? {
+        guard x >= 0, y >= 0, z >= 0,
+              x < request.width, y < request.height, z < request.depth else {
+            return nil
+        }
+        return ids[Int(y * request.width * request.depth + z * request.width + x)]
     }
 }
 
@@ -290,6 +399,66 @@ public struct EndBiomeGridResult: Equatable, Sendable {
             return nil
         }
         return ids[Int(z * width + x)]
+    }
+}
+
+public struct EndChunkAnalysis: Equatable, Sendable {
+    public let version: MinecraftVersion
+    public let seed: Int64
+    public let chunkX: Int32
+    public let chunkZ: Int32
+    public let isEmpty: Bool
+    public let islands: [EndIslandInfo]
+
+    public init(
+        version: MinecraftVersion,
+        seed: Int64,
+        chunkX: Int32,
+        chunkZ: Int32,
+        isEmpty: Bool,
+        islands: [EndIslandInfo]
+    ) {
+        self.version = version
+        self.seed = seed
+        self.chunkX = chunkX
+        self.chunkZ = chunkZ
+        self.isEmpty = isEmpty
+        self.islands = islands
+    }
+}
+
+public struct EndSurfaceHeightGridRequest: Equatable, Sendable {
+    public let version: MinecraftVersion
+    public let seed: Int64
+    public let originX: Int32
+    public let originZ: Int32
+    public let width: Int32
+    public let height: Int32
+
+    public init(version: MinecraftVersion, seed: Int64, originX: Int32, originZ: Int32, width: Int32, height: Int32) {
+        self.version = version
+        self.seed = seed
+        self.originX = originX
+        self.originZ = originZ
+        self.width = width
+        self.height = height
+    }
+}
+
+public struct EndSurfaceHeightGridResult: Equatable, Sendable {
+    public let request: EndSurfaceHeightGridRequest
+    public let heights: [Int32]
+
+    public init(request: EndSurfaceHeightGridRequest, heights: [Int32]) {
+        self.request = request
+        self.heights = heights
+    }
+
+    public func heightAt(x: Int32, z: Int32) -> Int32? {
+        guard x >= 0, z >= 0, x < request.width, z < request.height else {
+            return nil
+        }
+        return heights[Int(z * request.width + x)]
     }
 }
 
@@ -507,6 +676,95 @@ public struct BlockPosition: Equatable, Sendable {
     }
 }
 
+public struct StructurePieceSummary: Equatable, Sendable {
+    public let name: String?
+    public let type: Int32
+    public let depth: Int32
+    public let rotation: Int32
+    public let position: BlockPosition3D
+    public let boundingBoxMin: BlockPosition3D
+    public let boundingBoxMax: BlockPosition3D
+
+    public init(
+        name: String?,
+        type: Int32,
+        depth: Int32,
+        rotation: Int32,
+        position: BlockPosition3D,
+        boundingBoxMin: BlockPosition3D,
+        boundingBoxMax: BlockPosition3D
+    ) {
+        self.name = name
+        self.type = type
+        self.depth = depth
+        self.rotation = rotation
+        self.position = position
+        self.boundingBoxMin = boundingBoxMin
+        self.boundingBoxMax = boundingBoxMax
+    }
+}
+
+public struct BlockPosition3D: Equatable, Sendable {
+    public let x: Int32
+    public let y: Int32
+    public let z: Int32
+
+    public init(x: Int32, y: Int32, z: Int32) {
+        self.x = x
+        self.y = y
+        self.z = z
+    }
+}
+
+public struct StructureVariantSummary: Equatable, Sendable {
+    public let type: StructureType
+    public let abandoned: Bool
+    public let giant: Bool
+    public let underground: Bool
+    public let airPocket: Bool
+    public let basement: Bool
+    public let cracked: Bool
+    public let size: Int32
+    public let startPiece: Int32
+    public let biomeID: Int32
+    public let rotation: Int32
+    public let mirror: Int32
+    public let position: BlockPosition3D
+    public let size3D: BlockPosition3D
+
+    public init(
+        type: StructureType,
+        abandoned: Bool,
+        giant: Bool,
+        underground: Bool,
+        airPocket: Bool,
+        basement: Bool,
+        cracked: Bool,
+        size: Int32,
+        startPiece: Int32,
+        biomeID: Int32,
+        rotation: Int32,
+        mirror: Int32,
+        position: BlockPosition3D,
+        size3D: BlockPosition3D
+    ) {
+        self.type = type
+        self.abandoned = abandoned
+        self.giant = giant
+        self.underground = underground
+        self.airPocket = airPocket
+        self.basement = basement
+        self.cracked = cracked
+        self.size = size
+        self.startPiece = startPiece
+        self.biomeID = biomeID
+        self.rotation = rotation
+        self.mirror = mirror
+        self.position = position
+        self.size3D = size3D
+    }
+}
+
 public struct EndIslandInfo: Equatable, Sendable {
     public let x: Int32
     public let y: Int32
@@ -556,6 +814,319 @@ public struct ClimateParameterRanges: Equatable, Sendable {
     }
 }
 
+public struct BiomeAreaStatisticsRequest: Equatable, Sendable {
+    public let version: MinecraftVersion
+    public let seeds: [Int64]
+    public let dimensions: [MinecraftDimension]
+    public let originX: Int32
+    public let originZ: Int32
+    public let width: Int32
+    public let height: Int32
+    public let scale: Int32
+    public let y: Int32
+    public let sampleLimit: Int?
+
+    public init(
+        version: MinecraftVersion,
+        seeds: [Int64],
+        dimensions: [MinecraftDimension],
+        originX: Int32,
+        originZ: Int32,
+        width: Int32,
+        height: Int32,
+        scale: Int32 = 4,
+        y: Int32 = 63,
+        sampleLimit: Int? = nil
+    ) {
+        self.version = version
+        self.seeds = seeds
+        self.dimensions = dimensions
+        self.originX = originX
+        self.originZ = originZ
+        self.width = width
+        self.height = height
+        self.scale = scale
+        self.y = y
+        self.sampleLimit = sampleLimit
+    }
+}
+
+public struct BiomeAreaStatistics: Equatable, Sendable {
+    public let seed: Int64
+    public let dimension: MinecraftDimension
+    public let countsByBiomeID: [Int32: Int]
+    public let distinctBiomeCount: Int
+    public let sampledCellCount: Int
+
+    public init(
+        seed: Int64,
+        dimension: MinecraftDimension,
+        countsByBiomeID: [Int32: Int],
+        distinctBiomeCount: Int,
+        sampledCellCount: Int
+    ) {
+        self.seed = seed
+        self.dimension = dimension
+        self.countsByBiomeID = countsByBiomeID
+        self.distinctBiomeCount = distinctBiomeCount
+        self.sampledCellCount = sampledCellCount
+    }
+}
+
+public struct BiomeFilterSpec: Equatable, Sendable {
+    public let requiredBiomeIDs: [Int32]
+    public let excludedBiomeIDs: [Int32]
+    public let matchAnyBiomeIDs: [Int32]
+    public let allowsApproximateFiltering: Bool
+    public let forcesOceanVariants: Bool
+
+    public init(
+        requiredBiomeIDs: [Int32] = [],
+        excludedBiomeIDs: [Int32] = [],
+        matchAnyBiomeIDs: [Int32] = [],
+        allowsApproximateFiltering: Bool = false,
+        forcesOceanVariants: Bool = true
+    ) {
+        self.requiredBiomeIDs = requiredBiomeIDs
+        self.excludedBiomeIDs = excludedBiomeIDs
+        self.matchAnyBiomeIDs = matchAnyBiomeIDs
+        self.allowsApproximateFiltering = allowsApproximateFiltering
+        self.forcesOceanVariants = forcesOceanVariants
+    }
+}
+
+public struct BiomeAreaFilterRequest: Equatable, Sendable {
+    public let version: MinecraftVersion
+    public let seed: Int64
+    public let dimension: MinecraftDimension
+    public let originX: Int32
+    public let originZ: Int32
+    public let width: Int32
+    public let height: Int32
+    public let scale: Int32
+    public let y: Int32
+    public let filter: BiomeFilterSpec
+
+    public init(
+        version: MinecraftVersion,
+        seed: Int64,
+        dimension: MinecraftDimension,
+        originX: Int32,
+        originZ: Int32,
+        width: Int32,
+        height: Int32,
+        scale: Int32 = 4,
+        y: Int32 = 63,
+        filter: BiomeFilterSpec
+    ) {
+        self.version = version
+        self.seed = seed
+        self.dimension = dimension
+        self.originX = originX
+        self.originZ = originZ
+        self.width = width
+        self.height = height
+        self.scale = scale
+        self.y = y
+        self.filter = filter
+    }
+}
+
+public struct BiomeAreaFilterResult: Equatable, Sendable {
+    public let request: BiomeAreaFilterRequest
+    public let matched: Bool
+    public let completedFullGeneration: Bool
+
+    public init(request: BiomeAreaFilterRequest, matched: Bool, completedFullGeneration: Bool) {
+        self.request = request
+        self.matched = matched
+        self.completedFullGeneration = completedFullGeneration
+    }
+}
+
+public struct BiomeCenterRequest: Equatable, Sendable {
+    public let version: MinecraftVersion
+    public let seed: Int64
+    public let originX: Int32
+    public let originZ: Int32
+    public let width: Int32
+    public let height: Int32
+    public let biomeID: Int32
+    public let minimumSize: Int32
+    public let tolerance: Int32
+    public let maximumCount: Int32
+    public let y: Int32
+
+    public init(
+        version: MinecraftVersion,
+        seed: Int64,
+        originX: Int32,
+        originZ: Int32,
+        width: Int32,
+        height: Int32,
+        biomeID: Int32,
+        minimumSize: Int32 = 1,
+        tolerance: Int32 = 0,
+        maximumCount: Int32 = 4096,
+        y: Int32 = 63
+    ) {
+        self.version = version
+        self.seed = seed
+        self.originX = originX
+        self.originZ = originZ
+        self.width = width
+        self.height = height
+        self.biomeID = biomeID
+        self.minimumSize = minimumSize
+        self.tolerance = tolerance
+        self.maximumCount = maximumCount
+        self.y = y
+    }
+}
+
+public struct BiomeCenter: Equatable, Sendable {
+    public let biomeID: Int32
+    public let position: BlockPosition
+    public let size: Int32
+
+    public init(biomeID: Int32, position: BlockPosition, size: Int32) {
+        self.biomeID = biomeID
+        self.position = position
+        self.size = size
+    }
+}
+
+public enum LocationSampleMode: Equatable, Sendable {
+    case squareSpiral
+    case radialGrid
+}
+
+public enum CubiomesQueryCondition: Equatable, Sendable {
+    case biomeAt(relativeX: Int32, relativeZ: Int32, y: Int32, allowedBiomeIDs: [Int32])
+    case biomeArea(relativeRect: StructureRect, scale: Int32, y: Int32, filter: BiomeFilterSpec)
+    case structures(relativeRect: StructureRect, types: [StructureType], minimumCount: Int)
+    case approximateHeight(relativeX: Int32, relativeZ: Int32, allowed: ClosedRange<Int32>)
+}
+
+public struct LocationSearchRequest: Equatable, Sendable {
+    public let version: MinecraftVersion
+    public let seeds: [Int64]
+    public let dimension: MinecraftDimension
+    public let positions: [BlockPosition]
+    public let conditions: [CubiomesQueryCondition]
+    public let maximumResults: Int
+
+    public init(
+        version: MinecraftVersion,
+        seeds: [Int64],
+        dimension: MinecraftDimension,
+        positions: [BlockPosition],
+        conditions: [CubiomesQueryCondition],
+        maximumResults: Int = Int.max
+    ) {
+        self.version = version
+        self.seeds = seeds
+        self.dimension = dimension
+        self.positions = positions
+        self.conditions = conditions
+        self.maximumResults = maximumResults
+    }
+}
+
+public struct LocationSearchResult: Equatable, Sendable {
+    public let seed: Int64
+    public let position: BlockPosition
+
+    public init(seed: Int64, position: BlockPosition) {
+        self.seed = seed
+        self.position = position
+    }
+}
+
+public struct SeedSearchRequest: Equatable, Sendable {
+    public let version: MinecraftVersion
+    public let seeds: [Int64]
+    public let dimension: MinecraftDimension
+    public let conditions: [CubiomesQueryCondition]
+    public let maximumResults: Int
+
+    public init(
+        version: MinecraftVersion,
+        seeds: [Int64],
+        dimension: MinecraftDimension,
+        conditions: [CubiomesQueryCondition],
+        maximumResults: Int = Int.max
+    ) {
+        self.version = version
+        self.seeds = seeds
+        self.dimension = dimension
+        self.conditions = conditions
+        self.maximumResults = maximumResults
+    }
+}
+
+public struct QuadStructureSearchRequest: Equatable, Sendable {
+    public let type: StructureType
+    public let version: MinecraftVersion
+    public let seed: Int64
+    public let regionX: Int32
+    public let regionZ: Int32
+    public let regionWidth: Int32
+    public let regionHeight: Int32
+    public let maximumCount: Int32
+    public let requiresViableBiomes: Bool
+
+    public init(
+        type: StructureType,
+        version: MinecraftVersion,
+        seed: Int64,
+        regionX: Int32,
+        regionZ: Int32,
+        regionWidth: Int32,
+        regionHeight: Int32,
+        maximumCount: Int32 = 128,
+        requiresViableBiomes: Bool = true
+    ) {
+        self.type = type
+        self.version = version
+        self.seed = seed
+        self.regionX = regionX
+        self.regionZ = regionZ
+        self.regionWidth = regionWidth
+        self.regionHeight = regionHeight
+        self.maximumCount = maximumCount
+        self.requiresViableBiomes = requiresViableBiomes
+    }
+}
+
+public struct QuadStructureCluster: Equatable, Sendable {
+    public let type: StructureType
+    public let regionX: Int32
+    public let regionZ: Int32
+    public let attempts: [StructureLocation]
+    public let afkPosition: BlockPosition
+    public let spawningSpaces: Int32
+    public let enclosingRadius: Float
+
+    public init(
+        type: StructureType,
+        regionX: Int32,
+        regionZ: Int32,
+        attempts: [StructureLocation],
+        afkPosition: BlockPosition,
+        spawningSpaces: Int32,
+        enclosingRadius: Float
+    ) {
+        self.type = type
+        self.regionX = regionX
+        self.regionZ = regionZ
+        self.attempts = attempts
+        self.afkPosition = afkPosition
+        self.spawningSpaces = spawningSpaces
+        self.enclosingRadius = enclosingRadius
+    }
+}
+
 public enum CubiomesError: Error, Equatable, Sendable {
     case biomeLookupFailed
     case unsupportedBiome(id: Int32)
@@ -570,6 +1141,13 @@ public enum CubiomesError: Error, Equatable, Sendable {
     case approximateHeightMappingFailed(code: Int32)
     case endBiomeGridGenerationFailed(code: Int32)
     case netherBiomeGridGenerationFailed(code: Int32)
+    case invalidVolumeSize(width: Int32, height: Int32, depth: Int32)
+    case unsupportedStructureVariant(StructureType, version: MinecraftVersion)
+    case unsupportedStructurePieces(StructureType)
+    case unsupportedBiomeFilterScale(scale: Int32)
+    case invalidSearchLimit(Int)
+    case unsupportedQuadSearch(StructureType, version: MinecraftVersion)
+    case quadSearchFailed
 }
 
 public final class CubiomesWorld: @unchecked Sendable {
@@ -725,6 +1303,47 @@ public final class CubiomesWorld: @unchecked Sendable {
         }
     }
 
+    public func mapTile(_ request: MapTileRequest) throws -> MapTileResult {
+        let biomeRequest = BiomeGridRequest(
+            version: request.version,
+            seed: request.seed,
+            dimension: request.dimension,
+            originX: request.originX,
+            originZ: request.originZ,
+            width: request.width,
+            height: request.height,
+            scale: request.scale,
+            y: request.y
+        )
+        let biomeGrid = try biomes(biomeRequest)
+        let heightGrid: ApproximateHeightGridResult?
+        if request.includesApproximateHeights {
+            heightGrid = try approximateHeights(
+                originX: request.originX,
+                originZ: request.originZ,
+                width: request.width,
+                height: request.height
+            )
+        } else {
+            heightGrid = nil
+        }
+        let structureRect = StructureRect(
+            originX: request.originX * request.scale,
+            originZ: request.originZ * request.scale,
+            width: request.width * request.scale,
+            height: request.height * request.scale
+        )
+        let structureLocations = request.structureTypes.isEmpty
+            ? []
+            : try structures(types: request.structureTypes, rect: structureRect)
+        return MapTileResult(
+            request: request,
+            biomes: biomeGrid,
+            approximateHeights: heightGrid,
+            structures: structureLocations
+        )
+    }
+
     public func structureConfig(for type: StructureType) throws -> StructureConfigInfo {
         try Self.structureConfig(for: type, version: version)
     }
@@ -808,6 +1427,21 @@ public final class CubiomesWorld: @unchecked Sendable {
     private static func validateRect(_ rect: StructureRect) throws {
         guard rect.minX < rect.maxX, rect.minZ < rect.maxZ else {
             throw CubiomesError.invalidStructureRect
+        }
+    }
+
+    fileprivate static func validateSearchLimit(_ limit: Int) throws {
+        guard limit >= 0 else {
+            throw CubiomesError.invalidSearchLimit(limit)
+        }
+    }
+
+    fileprivate static func validateVolume(width: Int32, height: Int32, depth: Int32) throws {
+        guard width > 0, height > 0, depth > 0 else {
+            throw CubiomesError.invalidVolumeSize(width: width, height: height, depth: depth)
+        }
+        guard Int64(width) * Int64(height) * Int64(depth) <= Int64(Int32.max) else {
+            throw CubiomesError.invalidVolumeSize(width: width, height: height, depth: depth)
         }
     }
 
@@ -993,6 +1627,11 @@ public final class CubiomesWorld: @unchecked Sendable {
 }
 
 public enum CubiomesCore {
+    public static func mapTile(_ request: MapTileRequest) throws -> MapTileResult {
+        let world = CubiomesWorld(version: request.version, seed: request.seed, dimension: request.dimension)
+        return try world.mapTile(request)
+    }
+
     public static func biomeInfo(version: MinecraftVersion, id: Int32) -> BiomeInfo {
         let mutatedID = getMutated(version.rawValue, id)
         return BiomeInfo(
@@ -1094,6 +1733,31 @@ public enum CubiomesCore {
         return NetherBiomeGridResult(request: request, ids: ids)
     }
 
+    public static func netherBiomeVolume(_ request: NetherBiomeVolumeRequest) throws -> NetherBiomeVolumeResult {
+        try CubiomesWorld.validateVolume(width: request.width, height: request.height, depth: request.depth)
+
+        let count = Int(Int64(request.width) * Int64(request.height) * Int64(request.depth))
+        var ids = Array(repeating: Int32(0), count: count)
+        var noise = NetherNoise()
+        setNetherSeed(&noise, UInt64(bitPattern: request.seed))
+        let range = Range(
+            scale: 4,
+            x: request.originX,
+            z: request.originZ,
+            sx: request.width,
+            sz: request.depth,
+            y: request.originY,
+            sy: request.height
+        )
+        let code = ids.withUnsafeMutableBufferPointer {
+            mapNether3D(&noise, $0.baseAddress, range, request.confidence)
+        }
+        guard code == 0 else {
+            throw CubiomesError.netherBiomeGridGenerationFailed(code: code)
+        }
+        return NetherBiomeVolumeResult(request: request, ids: ids)
+    }
+
     public static func endBiomes(
         version: MinecraftVersion,
         seed: Int64,
@@ -1136,6 +1800,39 @@ public enum CubiomesCore {
         return EndBiomeGridResult(request: request, ids: ids)
     }
 
+    public static func endSurfaceHeights(_ request: EndSurfaceHeightGridRequest) throws -> EndSurfaceHeightGridResult {
+        try CubiomesWorld.validateGridLike(width: request.width, height: request.height)
+        var heights: [Int32] = []
+        heights.reserveCapacity(Int(request.width * request.height))
+        for z in 0..<request.height {
+            for x in 0..<request.width {
+                heights.append(endSurfaceHeight(
+                    version: request.version,
+                    seed: request.seed,
+                    x: request.originX + x,
+                    z: request.originZ + z
+                ))
+            }
+        }
+        return EndSurfaceHeightGridResult(request: request, heights: heights)
+    }
+
+    public static func endChunkAnalysis(version: MinecraftVersion, seed: Int64, chunkX: Int32, chunkZ: Int32) -> EndChunkAnalysis {
+        var endNoise = EndNoise()
+        setEndSeed(&endNoise, version.rawValue, UInt64(bitPattern: seed))
+        var surfaceNoise = SurfaceNoise()
+        initSurfaceNoise(&surfaceNoise, MinecraftDimension.end.rawValue, UInt64(bitPattern: seed))
+        let empty = isEndChunkEmpty(&endNoise, &surfaceNoise, UInt64(bitPattern: seed), chunkX, chunkZ) != 0
+        return EndChunkAnalysis(
+            version: version,
+            seed: seed,
+            chunkX: chunkX,
+            chunkZ: chunkZ,
+            isEmpty: empty,
+            islands: endIslands(version: version, seed: seed, chunkX: chunkX, chunkZ: chunkZ)
+        )
+    }
+
     public static func approximateHeights(
         version: MinecraftVersion,
         seed: Int64,
@@ -1167,6 +1864,66 @@ public enum CubiomesCore {
     ) throws -> [StructureLocation] {
         let world = CubiomesWorld(version: version, seed: seed, dimension: dimension)
         return try world.structures(types: types, rect: rect)
+    }
+
+    public static func structureVariant(
+        type: StructureType,
+        version: MinecraftVersion,
+        seed: Int64,
+        blockX: Int32,
+        blockZ: Int32,
+        biomeID: Int32 = -1
+    ) throws -> StructureVariantSummary? {
+        guard let requestedCType = type.cubiomesType else {
+            throw CubiomesError.unsupportedStructureVariant(type, version: version)
+        }
+        var variant = StructureVariant()
+        guard getVariant(&variant, requestedCType, version.rawValue, UInt64(bitPattern: seed), blockX, blockZ, biomeID) != 0 else {
+            return nil
+        }
+        return StructureVariantSummary(
+            type: type,
+            abandoned: variant.abandoned != 0,
+            giant: variant.giant != 0,
+            underground: variant.underground != 0,
+            airPocket: variant.airpocket != 0,
+            basement: variant.basement != 0,
+            cracked: variant.cracked != 0,
+            size: Int32(variant.size),
+            startPiece: Int32(variant.start),
+            biomeID: Int32(variant.biome),
+            rotation: Int32(variant.rotation),
+            mirror: Int32(variant.mirror),
+            position: BlockPosition3D(x: Int32(variant.x), y: Int32(variant.y), z: Int32(variant.z)),
+            size3D: BlockPosition3D(x: Int32(variant.sx), y: Int32(variant.sy), z: Int32(variant.sz))
+        )
+    }
+
+    public static func structurePieces(
+        type: StructureType,
+        version: MinecraftVersion,
+        seed: Int64,
+        chunkX: Int32,
+        chunkZ: Int32,
+        maximumPieces: Int32 = 400
+    ) throws -> [StructurePieceSummary] {
+        switch type {
+        case .endCity:
+            var pieces = Array(repeating: Piece(), count: Int(END_CITY_PIECES_MAX))
+            let count = pieces.withUnsafeMutableBufferPointer {
+                getEndCityPieces($0.baseAddress, UInt64(bitPattern: seed), chunkX, chunkZ)
+            }
+            return pieceSummaries(from: pieces, count: count)
+        case .fortress:
+            guard maximumPieces > 0 else { return [] }
+            var pieces = Array(repeating: Piece(), count: Int(maximumPieces))
+            let count = pieces.withUnsafeMutableBufferPointer {
+                getFortressPieces($0.baseAddress, maximumPieces, version.rawValue, UInt64(bitPattern: seed), chunkX, chunkZ)
+            }
+            return pieceSummaries(from: pieces, count: count)
+        default:
+            throw CubiomesError.unsupportedStructurePieces(type)
+        }
     }
 
     public static func structureConfig(type: StructureType, version: MinecraftVersion) throws -> StructureConfigInfo {
@@ -1326,6 +2083,369 @@ public enum CubiomesCore {
         climateRanges(from: getBiomeParaLimits(version.rawValue, biomeID))
     }
 
+    public static func biomeAreaStatistics(
+        _ request: BiomeAreaStatisticsRequest,
+        shouldCancel: (() -> Bool)? = nil
+    ) throws -> [BiomeAreaStatistics] {
+        try CubiomesWorld.validateGridLike(width: request.width, height: request.height)
+        var results: [BiomeAreaStatistics] = []
+        let totalCells = Int(Int64(request.width) * Int64(request.height))
+        let sampleLimit = request.sampleLimit.map { max(0, min($0, totalCells)) } ?? totalCells
+
+        for seed in request.seeds {
+            for dimension in request.dimensions {
+                if shouldCancel?() == true {
+                    return results
+                }
+                var counts: [Int32: Int] = [:]
+                if sampleLimit == totalCells {
+                    let grid = try biomes(
+                        version: request.version,
+                        seed: seed,
+                        dimension: dimension,
+                        originX: request.originX,
+                        originZ: request.originZ,
+                        width: request.width,
+                        height: request.height,
+                        scale: request.scale,
+                        y: request.y
+                    )
+                    for id in grid.ids {
+                        counts[id, default: 0] += 1
+                    }
+                } else {
+                    let world = CubiomesWorld(version: request.version, seed: seed, dimension: dimension)
+                    for index in 0..<sampleLimit {
+                        if shouldCancel?() == true {
+                            return results
+                        }
+                        let x = request.originX + Int32(index % Int(request.width))
+                        let z = request.originZ + Int32(index / Int(request.width))
+                        let biome = try world.biome(x: x * request.scale, y: request.y, z: z * request.scale)
+                        counts[biome.id, default: 0] += 1
+                    }
+                }
+                results.append(BiomeAreaStatistics(
+                    seed: seed,
+                    dimension: dimension,
+                    countsByBiomeID: counts,
+                    distinctBiomeCount: counts.count,
+                    sampledCellCount: sampleLimit
+                ))
+            }
+        }
+        return results
+    }
+
+    public static func biomeAreaFilter(_ request: BiomeAreaFilterRequest) throws -> BiomeAreaFilterResult {
+        try CubiomesWorld.validateGridLike(width: request.width, height: request.height)
+        guard [1, 4, 16, 64, 256].contains(request.scale) else {
+            throw CubiomesError.unsupportedBiomeFilterScale(scale: request.scale)
+        }
+
+        var generator = Generator()
+        setupGenerator(&generator, request.version.rawValue, request.filter.generatorFlags)
+        var filter = request.filter.makeCFilter(version: request.version)
+        let range = Range(
+            scale: request.scale,
+            x: request.originX,
+            z: request.originZ,
+            sx: request.width,
+            sz: request.height,
+            y: request.scale == 1 ? request.y : request.y >> 2,
+            sy: 1
+        )
+        let code = checkForBiomes(
+            &generator,
+            nil,
+            range,
+            request.dimension.rawValue,
+            UInt64(bitPattern: request.seed),
+            &filter,
+            nil
+        )
+        return BiomeAreaFilterResult(request: request, matched: code > 0, completedFullGeneration: code == 1)
+    }
+
+    public static func biomeCenters(_ request: BiomeCenterRequest) throws -> [BiomeCenter] {
+        try CubiomesWorld.validateGridLike(width: request.width, height: request.height)
+        guard biomeExists(request.version.rawValue, request.biomeID) != 0 else {
+            throw CubiomesError.unsupportedBiome(id: request.biomeID)
+        }
+        if request.version.rawValue >= MinecraftVersion.v1_18.rawValue {
+            guard getBiomeParaLimits(request.version.rawValue, request.biomeID) != nil else {
+                throw CubiomesError.unsupportedBiome(id: request.biomeID)
+            }
+        }
+        guard request.maximumCount > 0 else {
+            return []
+        }
+        var generator = Generator()
+        setupGenerator(&generator, request.version.rawValue, 0)
+        applySeed(&generator, MinecraftDimension.overworld.rawValue, UInt64(bitPattern: request.seed))
+        let range = Range(
+            scale: 4,
+            x: request.originX,
+            z: request.originZ,
+            sx: request.width,
+            sz: request.height,
+            y: request.y >> 2,
+            sy: 1
+        )
+        var positions = Array(repeating: Pos(), count: Int(request.maximumCount))
+        var sizes = Array(repeating: Int32(0), count: Int(request.maximumCount))
+        let found = positions.withUnsafeMutableBufferPointer { positionBuffer in
+            sizes.withUnsafeMutableBufferPointer { sizeBuffer in
+                getBiomeCenters(
+                    positionBuffer.baseAddress,
+                    sizeBuffer.baseAddress,
+                    request.maximumCount,
+                    &generator,
+                    range,
+                    request.biomeID,
+                    request.minimumSize,
+                    request.tolerance,
+                    nil
+                )
+            }
+        }
+        guard found > 0 else {
+            return []
+        }
+        return (0..<min(Int(found), positions.count)).map { index in
+            BiomeCenter(
+                biomeID: request.biomeID,
+                position: BlockPosition(x: Int32(positions[index].x), z: Int32(positions[index].z)),
+                size: sizes[index]
+            )
+        }
+    }
+
+    public static func locationSamples(
+        mode: LocationSampleMode,
+        count: Int,
+        spacing: Int32,
+        origin: BlockPosition = BlockPosition(x: 0, z: 0)
+    ) -> [BlockPosition] {
+        guard count > 0, spacing != 0 else {
+            return []
+        }
+        switch mode {
+        case .squareSpiral:
+            var samples: [BlockPosition] = []
+            samples.reserveCapacity(count)
+            var rx: Int32 = 0
+            var rz: Int32 = 0
+            var segmentIndex = 0
+            var segmentLength = 1
+            var dx: Int32 = 1
+            var dz: Int32 = 0
+            for _ in 0..<count {
+                samples.append(BlockPosition(x: origin.x + spacing * rx, z: origin.z + spacing * rz))
+                rx += dx
+                rz += dz
+                segmentIndex += 1
+                if segmentIndex == segmentLength {
+                    segmentIndex = 0
+                    let previousDX = dx
+                    dx = -dz
+                    dz = previousDX
+                    if dz == 0 {
+                        segmentLength += 1
+                    }
+                }
+            }
+            return samples
+        case .radialGrid:
+            var candidates: [(x: Int32, z: Int32, distance: Float)] = []
+            let radiusSquaredMax = Float(count) / Float.pi
+            let radius = Int32(radiusSquaredMax.squareRoot())
+            if radius > 0 {
+                for x in 1...radius {
+                    for z in 0...x {
+                        let distance = Float(x * x + z * z)
+                        if distance <= radiusSquaredMax {
+                            candidates.append((x, z, distance))
+                        }
+                    }
+                }
+            }
+            candidates.sort { $0.distance < $1.distance }
+            var samples = [origin]
+            for candidate in candidates {
+                let x = spacing * candidate.x
+                let z = spacing * candidate.z
+                if z == 0 || x == z {
+                    samples.append(contentsOf: [
+                        BlockPosition(x: origin.x + x, z: origin.z + z),
+                        BlockPosition(x: origin.x - z, z: origin.z + x),
+                        BlockPosition(x: origin.x - x, z: origin.z - z),
+                        BlockPosition(x: origin.x + z, z: origin.z - x),
+                    ])
+                } else {
+                    samples.append(contentsOf: [
+                        BlockPosition(x: origin.x + x, z: origin.z + z),
+                        BlockPosition(x: origin.x + z, z: origin.z + x),
+                        BlockPosition(x: origin.x - z, z: origin.z + x),
+                        BlockPosition(x: origin.x - x, z: origin.z + z),
+                        BlockPosition(x: origin.x - x, z: origin.z - z),
+                        BlockPosition(x: origin.x - z, z: origin.z - x),
+                        BlockPosition(x: origin.x + z, z: origin.z - x),
+                        BlockPosition(x: origin.x + x, z: origin.z - z),
+                    ])
+                }
+                if samples.count >= count {
+                    return Array(samples.prefix(count))
+                }
+            }
+            return Array(samples.prefix(count))
+        }
+    }
+
+    public static func findLocations(
+        _ request: LocationSearchRequest,
+        shouldCancel: (() -> Bool)? = nil
+    ) throws -> [LocationSearchResult] {
+        try CubiomesWorld.validateSearchLimit(request.maximumResults)
+        guard request.maximumResults > 0 else { return [] }
+        var results: [LocationSearchResult] = []
+        for seed in request.seeds {
+            for position in request.positions {
+                if shouldCancel?() == true {
+                    return results
+                }
+                if try matchesAll(request.conditions, version: request.version, seed: seed, dimension: request.dimension, at: position) {
+                    results.append(LocationSearchResult(seed: seed, position: position))
+                    if results.count >= request.maximumResults {
+                        return results
+                    }
+                }
+            }
+        }
+        return results
+    }
+
+    public static func findSeeds(
+        _ request: SeedSearchRequest,
+        shouldCancel: (() -> Bool)? = nil
+    ) throws -> [Int64] {
+        try CubiomesWorld.validateSearchLimit(request.maximumResults)
+        guard request.maximumResults > 0 else { return [] }
+        var results: [Int64] = []
+        for seed in request.seeds {
+            if shouldCancel?() == true {
+                return results
+            }
+            if try matchesAll(request.conditions, version: request.version, seed: seed, dimension: request.dimension, at: BlockPosition(x: 0, z: 0)) {
+                results.append(seed)
+                if results.count >= request.maximumResults {
+                    return results
+                }
+            }
+        }
+        return results
+    }
+
+    public static func quadStructureClusters(_ request: QuadStructureSearchRequest) throws -> [QuadStructureCluster] {
+        guard request.maximumCount > 0 else { return [] }
+        guard request.type == .swampHut,
+              let requestedCType = request.type.cubiomesType else {
+            throw CubiomesError.unsupportedQuadSearch(request.type, version: request.version)
+        }
+        var config = StructureConfig()
+        guard getStructureConfig(requestedCType, request.version.rawValue, &config) != 0 else {
+            throw CubiomesError.unsupportedQuadSearch(request.type, version: request.version)
+        }
+        var rawPositions = Array(repeating: Pos(), count: Int(request.maximumCount))
+        var lowBits: [UInt64] = [
+            0x1272d, 0x17908, 0x367b9, 0x43f18, 0x487c9, 0x487ce, 0x50aa7,
+            0x647b5, 0x65118, 0x75618, 0x79a0a, 0x89718, 0x9371a, 0x967ec,
+            0xa3d0a, 0xa5918, 0xa591d, 0xa5a08, 0xb5e18, 0xc6749, 0xc6d9a,
+            0xc751a, 0xd7108, 0xd717a, 0xe2739, 0xe9918, 0xee1c4, 0xf520a, 0
+        ]
+        let found = rawPositions.withUnsafeMutableBufferPointer { outBuffer in
+            lowBits.withUnsafeMutableBufferPointer { lowBitBuffer in
+                scanForQuads(
+                    config,
+                    128,
+                    UInt64(bitPattern: request.seed) & lower48Mask,
+                    lowBitBuffer.baseAddress,
+                    20,
+                    UInt64(bitPattern: Int64(config.salt)),
+                    request.regionX,
+                    request.regionZ,
+                    request.regionWidth,
+                    request.regionHeight,
+                    outBuffer.baseAddress,
+                    request.maximumCount
+                )
+            }
+        }
+        guard found >= 0 else {
+            throw CubiomesError.quadSearchFailed
+        }
+
+        var generator = Generator()
+        setupGenerator(&generator, request.version.rawValue, 0)
+        applySeed(&generator, MinecraftDimension.overworld.rawValue, UInt64(bitPattern: request.seed))
+
+        var clusters: [QuadStructureCluster] = []
+        for index in 0..<min(Int(found), rawPositions.count) {
+            let region = rawPositions[index]
+            var attemptPositions = [
+                Pos(), Pos(), Pos(), Pos()
+            ]
+            let regionPairs: [(Int32, Int32)] = [(0, 0), (0, 1), (1, 0), (1, 1)]
+            var attempts: [StructureLocation] = []
+            for attemptIndex in 0..<4 {
+                var pos = Pos()
+                guard getStructurePos(
+                    requestedCType,
+                    request.version.rawValue,
+                    UInt64(bitPattern: request.seed),
+                    Int32(region.x) + regionPairs[attemptIndex].0,
+                    Int32(region.z) + regionPairs[attemptIndex].1,
+                    &pos
+                ) != 0 else {
+                    continue
+                }
+                let viable = isViableStructurePos(requestedCType, &generator, Int32(pos.x), Int32(pos.z), 0) != 0
+                if request.requiresViableBiomes && !viable {
+                    continue
+                }
+                attemptPositions[attemptIndex] = pos
+                attempts.append(StructureLocation(
+                    type: request.type,
+                    blockX: Int32(pos.x),
+                    blockZ: Int32(pos.z),
+                    regionX: Int32(region.x) + regionPairs[attemptIndex].0,
+                    regionZ: Int32(region.z) + regionPairs[attemptIndex].1,
+                    dimension: .overworld,
+                    isViable: viable
+                ))
+            }
+            guard attempts.count == 4 else {
+                continue
+            }
+            var spawningSpaces = Int32(0)
+            let afk = attemptPositions.withUnsafeMutableBufferPointer {
+                getOptimalAfk($0.baseAddress, 7, 7, 9, &spawningSpaces)
+            }
+            let movedSeed = moveStructure(UInt64(bitPattern: request.seed), -Int32(region.x), -Int32(region.z))
+            let radius = isQuadBase(config, movedSeed, 160)
+            clusters.append(QuadStructureCluster(
+                type: request.type,
+                regionX: Int32(region.x),
+                regionZ: Int32(region.z),
+                attempts: attempts.sorted { ($0.blockZ, $0.blockX) < ($1.blockZ, $1.blockX) },
+                afkPosition: BlockPosition(x: Int32(afk.x), z: Int32(afk.z)),
+                spawningSpaces: spawningSpaces,
+                enclosingRadius: radius
+            ))
+        }
+        return clusters.sorted { ($0.regionZ, $0.regionX) < ($1.regionZ, $1.regionX) }
+    }
+
     public static func biome(
         version: MinecraftVersion,
         seed: Int64,
@@ -1361,6 +2481,168 @@ private extension StructureType {
             return false
         }
     }
+}
+
+private let lower48Mask: UInt64 = 0x0000ffffffffffff
+
+private extension BiomeFilterSpec {
+    var generatorFlags: UInt32 {
+        var flags = UInt32(0)
+        if forcesOceanVariants {
+            flags |= UInt32(BF_FORCED_OCEAN)
+        }
+        return flags
+    }
+
+    var filterFlags: UInt32 {
+        var flags = generatorFlags
+        if allowsApproximateFiltering {
+            flags |= UInt32(BF_APPROX)
+        }
+        return flags
+    }
+
+    func makeCFilter(version: MinecraftVersion) -> BiomeFilter {
+        var filter = BiomeFilter()
+        var required = requiredBiomeIDs
+        var excluded = excludedBiomeIDs
+        var matchAny = matchAnyBiomeIDs
+        required.withUnsafeMutableBufferPointer { requiredBuffer in
+            excluded.withUnsafeMutableBufferPointer { excludedBuffer in
+                matchAny.withUnsafeMutableBufferPointer { matchAnyBuffer in
+                    setupBiomeFilter(
+                        &filter,
+                        version.rawValue,
+                        filterFlags,
+                        requiredBuffer.baseAddress,
+                        Int32(requiredBuffer.count),
+                        excludedBuffer.baseAddress,
+                        Int32(excludedBuffer.count),
+                        matchAnyBuffer.baseAddress,
+                        Int32(matchAnyBuffer.count)
+                    )
+                }
+            }
+        }
+        return filter
+    }
+}
+
+private extension StructureRect {
+    func offset(by position: BlockPosition) -> StructureRect {
+        StructureRect(
+            minX: minX + position.x,
+            minZ: minZ + position.z,
+            maxX: maxX + position.x,
+            maxZ: maxZ + position.z
+        )
+    }
+}
+
+private func pieceSummaries(from pieces: [Piece], count: Int32) -> [StructurePieceSummary] {
+    guard count > 0 else {
+        return []
+    }
+    return (0..<min(Int(count), pieces.count)).map { index in
+        let piece = pieces[index]
+        let name = piece.name.map { String(cString: $0) }
+        return StructurePieceSummary(
+            name: name,
+            type: Int32(piece.type),
+            depth: Int32(piece.depth),
+            rotation: Int32(piece.rot),
+            position: BlockPosition3D(x: Int32(piece.pos.x), y: Int32(piece.pos.y), z: Int32(piece.pos.z)),
+            boundingBoxMin: BlockPosition3D(x: Int32(piece.bb0.x), y: Int32(piece.bb0.y), z: Int32(piece.bb0.z)),
+            boundingBoxMax: BlockPosition3D(x: Int32(piece.bb1.x), y: Int32(piece.bb1.y), z: Int32(piece.bb1.z))
+        )
+    }
+}
+
+private func matchesAll(
+    _ conditions: [CubiomesQueryCondition],
+    version: MinecraftVersion,
+    seed: Int64,
+    dimension: MinecraftDimension,
+    at position: BlockPosition
+) throws -> Bool {
+    for condition in conditions {
+        guard try matches(condition, version: version, seed: seed, dimension: dimension, at: position) else {
+            return false
+        }
+    }
+    return true
+}
+
+private func matches(
+    _ condition: CubiomesQueryCondition,
+    version: MinecraftVersion,
+    seed: Int64,
+    dimension: MinecraftDimension,
+    at position: BlockPosition
+) throws -> Bool {
+    switch condition {
+    case let .biomeAt(relativeX, relativeZ, y, allowedBiomeIDs):
+        let biome = try CubiomesCore.biome(
+            version: version,
+            seed: seed,
+            dimension: dimension,
+            x: position.x + relativeX,
+            y: y,
+            z: position.z + relativeZ
+        )
+        return allowedBiomeIDs.contains(biome.id)
+
+    case let .biomeArea(relativeRect, scale, y, filter):
+        let rect = relativeRect.offset(by: position)
+        let scaled = scaledCellRect(rect, scale: scale)
+        let result = try CubiomesCore.biomeAreaFilter(BiomeAreaFilterRequest(
+            version: version,
+            seed: seed,
+            dimension: dimension,
+            originX: scaled.originX,
+            originZ: scaled.originZ,
+            width: scaled.width,
+            height: scaled.height,
+            scale: scale,
+            y: y,
+            filter: filter
+        ))
+        return result.matched
+
+    case let .structures(relativeRect, types, minimumCount):
+        let rect = relativeRect.offset(by: position)
+        let locations = try CubiomesCore.structures(
+            version: version,
+            seed: seed,
+            dimension: dimension,
+            types: types,
+            rect: rect
+        )
+        return locations.count >= minimumCount
+
+    case let .approximateHeight(relativeX, relativeZ, allowed):
+        let grid = try CubiomesCore.approximateHeights(
+            version: version,
+            seed: seed,
+            dimension: dimension,
+            originX: floorDiv(position.x + relativeX, 4),
+            originZ: floorDiv(position.z + relativeZ, 4),
+            width: 1,
+            height: 1
+        )
+        guard let height = grid.heightAt(x: 0, z: 0) else {
+            return false
+        }
+        return allowed.contains(Int32(height))
+    }
+}
+
+private func scaledCellRect(_ rect: StructureRect, scale: Int32) -> (originX: Int32, originZ: Int32, width: Int32, height: Int32) {
+    let x0 = floorDiv(rect.minX, scale)
+    let z0 = floorDiv(rect.minZ, scale)
+    let x1 = floorDiv(rect.maxX - 1, scale)
+    let z1 = floorDiv(rect.maxZ - 1, scale)
+    return (x0, z0, x1 - x0 + 1, z1 - z0 + 1)
 }
 
 private func climateRanges(from pointer: UnsafePointer<Int32>?) -> ClimateParameterRanges? {
