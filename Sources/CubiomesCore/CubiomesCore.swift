@@ -107,6 +107,45 @@ public struct BiomeInfo: Equatable, Sendable {
     }
 }
 
+public struct BiomeClassification: Equatable, Sendable {
+    public let id: Int32
+    public let isMesa: Bool
+    public let isShallowOcean: Bool
+    public let isDeepOcean: Bool
+    public let isOceanic: Bool
+    public let isSnowy: Bool
+
+    public init(
+        id: Int32,
+        isMesa: Bool,
+        isShallowOcean: Bool,
+        isDeepOcean: Bool,
+        isOceanic: Bool,
+        isSnowy: Bool
+    ) {
+        self.id = id
+        self.isMesa = isMesa
+        self.isShallowOcean = isShallowOcean
+        self.isDeepOcean = isDeepOcean
+        self.isOceanic = isOceanic
+        self.isSnowy = isSnowy
+    }
+}
+
+public struct BiomeTerrainInfo: Equatable, Sendable {
+    public let id: Int32
+    public let depth: Double
+    public let scale: Double
+    public let grass: Int32
+
+    public init(id: Int32, depth: Double, scale: Double, grass: Int32) {
+        self.id = id
+        self.depth = depth
+        self.scale = scale
+        self.grass = grass
+    }
+}
+
 public struct BiomeGridRequest: Equatable, Sendable {
     public let version: MinecraftVersion
     public let seed: Int64
@@ -153,6 +192,92 @@ public struct BiomeGridResult: Equatable, Sendable {
     public let ids: [Int32]
 
     public init(request: BiomeGridRequest, ids: [Int32]) {
+        self.request = request
+        self.ids = ids
+    }
+
+    public var width: Int32 { request.width }
+    public var height: Int32 { request.height }
+
+    public func idAt(x: Int32, z: Int32) -> Int32? {
+        guard x >= 0, z >= 0, x < width, z < height else {
+            return nil
+        }
+        return ids[Int(z * width + x)]
+    }
+}
+
+public struct NetherBiomeGridRequest: Equatable, Sendable {
+    public let seed: Int64
+    public let originX: Int32
+    public let originZ: Int32
+    public let width: Int32
+    public let height: Int32
+
+    /// Creates a Nether biome request at cubiomes' native 1:4 horizontal scale and y=0.
+    public init(seed: Int64, originX: Int32, originZ: Int32, width: Int32, height: Int32) {
+        self.seed = seed
+        self.originX = originX
+        self.originZ = originZ
+        self.width = width
+        self.height = height
+    }
+}
+
+public struct NetherBiomeGridResult: Equatable, Sendable {
+    public let request: NetherBiomeGridRequest
+    public let ids: [Int32]
+
+    public init(request: NetherBiomeGridRequest, ids: [Int32]) {
+        self.request = request
+        self.ids = ids
+    }
+
+    public var width: Int32 { request.width }
+    public var height: Int32 { request.height }
+
+    public func idAt(x: Int32, z: Int32) -> Int32? {
+        guard x >= 0, z >= 0, x < width, z < height else {
+            return nil
+        }
+        return ids[Int(z * width + x)]
+    }
+}
+
+public struct EndBiomeGridRequest: Equatable, Sendable {
+    public let version: MinecraftVersion
+    public let seed: Int64
+    public let originX: Int32
+    public let originZ: Int32
+    public let width: Int32
+    public let height: Int32
+    public let scale: Int32
+
+    /// Creates an End biome request. Supported scales are 4 and 16.
+    public init(
+        version: MinecraftVersion,
+        seed: Int64,
+        originX: Int32,
+        originZ: Int32,
+        width: Int32,
+        height: Int32,
+        scale: Int32 = 4
+    ) {
+        self.version = version
+        self.seed = seed
+        self.originX = originX
+        self.originZ = originZ
+        self.width = width
+        self.height = height
+        self.scale = scale
+    }
+}
+
+public struct EndBiomeGridResult: Equatable, Sendable {
+    public let request: EndBiomeGridRequest
+    public let ids: [Int32]
+
+    public init(request: EndBiomeGridRequest, ids: [Int32]) {
         self.request = request
         self.ids = ids
     }
@@ -382,8 +507,58 @@ public struct BlockPosition: Equatable, Sendable {
     }
 }
 
+public struct EndIslandInfo: Equatable, Sendable {
+    public let x: Int32
+    public let y: Int32
+    public let z: Int32
+    public let radius: Int32
+
+    public init(x: Int32, y: Int32, z: Int32, radius: Int32) {
+        self.x = x
+        self.y = y
+        self.z = z
+        self.radius = radius
+    }
+}
+
+public struct EndGatewayLink: Equatable, Sendable {
+    public let source: BlockPosition
+    public let destination: BlockPosition
+
+    public init(source: BlockPosition, destination: BlockPosition) {
+        self.source = source
+        self.destination = destination
+    }
+}
+
+public struct ClimateParameterRanges: Equatable, Sendable {
+    public let temperature: ClosedRange<Int32>
+    public let humidity: ClosedRange<Int32>
+    public let continentalness: ClosedRange<Int32>
+    public let erosion: ClosedRange<Int32>
+    public let depth: ClosedRange<Int32>
+    public let weirdness: ClosedRange<Int32>
+
+    public init(
+        temperature: ClosedRange<Int32>,
+        humidity: ClosedRange<Int32>,
+        continentalness: ClosedRange<Int32>,
+        erosion: ClosedRange<Int32>,
+        depth: ClosedRange<Int32>,
+        weirdness: ClosedRange<Int32>
+    ) {
+        self.temperature = temperature
+        self.humidity = humidity
+        self.continentalness = continentalness
+        self.erosion = erosion
+        self.depth = depth
+        self.weirdness = weirdness
+    }
+}
+
 public enum CubiomesError: Error, Equatable, Sendable {
     case biomeLookupFailed
+    case unsupportedBiome(id: Int32)
     case invalidBiomeGridSize(width: Int32, height: Int32)
     case unsupportedBiomeScale(scale: Int32, supported: [Int32])
     case biomeGridAllocationFailed
@@ -391,7 +566,10 @@ public enum CubiomesError: Error, Equatable, Sendable {
     case invalidStructureRect
     case unsupportedStructure(StructureType, version: MinecraftVersion, dimension: MinecraftDimension)
     case unsupportedStructureConfig(StructureType, version: MinecraftVersion)
+    case unsupportedStructureBiomeCheck(StructureType, version: MinecraftVersion)
     case approximateHeightMappingFailed(code: Int32)
+    case endBiomeGridGenerationFailed(code: Int32)
+    case netherBiomeGridGenerationFailed(code: Int32)
 }
 
 public final class CubiomesWorld: @unchecked Sendable {
@@ -618,7 +796,7 @@ public final class CubiomesWorld: @unchecked Sendable {
         }
     }
 
-    private static func validateGridLike(width: Int32, height: Int32) throws {
+    fileprivate static func validateGridLike(width: Int32, height: Int32) throws {
         guard width > 0, height > 0 else {
             throw CubiomesError.invalidBiomeGridSize(width: width, height: height)
         }
@@ -828,6 +1006,27 @@ public enum CubiomesCore {
         )
     }
 
+    public static func biomeClassification(id: Int32) -> BiomeClassification {
+        BiomeClassification(
+            id: id,
+            isMesa: CCubiomes.isMesa(id) != 0,
+            isShallowOcean: CCubiomes.isShallowOcean(id) != 0,
+            isDeepOcean: CCubiomes.isDeepOcean(id) != 0,
+            isOceanic: CCubiomes.isOceanic(id) != 0,
+            isSnowy: CCubiomes.isSnowy(id) != 0
+        )
+    }
+
+    public static func biomeTerrainInfo(id: Int32) throws -> BiomeTerrainInfo {
+        var depth = Double(0)
+        var scale = Double(0)
+        var grass = Int32(0)
+        guard getBiomeDepthAndScale(id, &depth, &scale, &grass) != 0 else {
+            throw CubiomesError.unsupportedBiome(id: id)
+        }
+        return BiomeTerrainInfo(id: id, depth: depth, scale: scale, grass: grass)
+    }
+
     public static func areSimilarBiomes(version: MinecraftVersion, _ firstID: Int32, _ secondID: Int32) -> Bool {
         areSimilar(version.rawValue, firstID, secondID) != 0
     }
@@ -861,6 +1060,80 @@ public enum CubiomesCore {
             dimension: request.dimension
         )
         return try world.biomes(request)
+    }
+
+    public static func netherBiomes(
+        seed: Int64,
+        originX: Int32,
+        originZ: Int32,
+        width: Int32,
+        height: Int32
+    ) throws -> NetherBiomeGridResult {
+        try netherBiomes(NetherBiomeGridRequest(
+            seed: seed,
+            originX: originX,
+            originZ: originZ,
+            width: width,
+            height: height
+        ))
+    }
+
+    public static func netherBiomes(_ request: NetherBiomeGridRequest) throws -> NetherBiomeGridResult {
+        try CubiomesWorld.validateGridLike(width: request.width, height: request.height)
+
+        let count = Int(Int64(request.width) * Int64(request.height))
+        var ids = Array(repeating: Int32(0), count: count)
+        var noise = NetherNoise()
+        setNetherSeed(&noise, UInt64(bitPattern: request.seed))
+        let code = ids.withUnsafeMutableBufferPointer {
+            mapNether2D(&noise, $0.baseAddress, request.originX, request.originZ, request.width, request.height)
+        }
+        guard code == 0 else {
+            throw CubiomesError.netherBiomeGridGenerationFailed(code: code)
+        }
+        return NetherBiomeGridResult(request: request, ids: ids)
+    }
+
+    public static func endBiomes(
+        version: MinecraftVersion,
+        seed: Int64,
+        originX: Int32,
+        originZ: Int32,
+        width: Int32,
+        height: Int32,
+        scale: Int32 = 4
+    ) throws -> EndBiomeGridResult {
+        try endBiomes(EndBiomeGridRequest(
+            version: version,
+            seed: seed,
+            originX: originX,
+            originZ: originZ,
+            width: width,
+            height: height,
+            scale: scale
+        ))
+    }
+
+    public static func endBiomes(_ request: EndBiomeGridRequest) throws -> EndBiomeGridResult {
+        try CubiomesWorld.validateGridLike(width: request.width, height: request.height)
+        guard [4, 16].contains(request.scale) else {
+            throw CubiomesError.unsupportedBiomeScale(scale: request.scale, supported: [4, 16])
+        }
+
+        let count = Int(Int64(request.width) * Int64(request.height))
+        var ids = Array(repeating: Int32(0), count: count)
+        var noise = EndNoise()
+        setEndSeed(&noise, request.version.rawValue, UInt64(bitPattern: request.seed))
+        let code = ids.withUnsafeMutableBufferPointer { buffer in
+            if request.scale == 16 {
+                return mapEndBiome(&noise, buffer.baseAddress, request.originX, request.originZ, request.width, request.height)
+            }
+            return mapEnd(&noise, buffer.baseAddress, request.originX, request.originZ, request.width, request.height)
+        }
+        guard code == 0 else {
+            throw CubiomesError.endBiomeGridGenerationFailed(code: code)
+        }
+        return EndBiomeGridResult(request: request, ids: ids)
     }
 
     public static func approximateHeights(
@@ -900,6 +1173,77 @@ public enum CubiomesCore {
         try CubiomesWorld.structureConfig(for: type, version: version)
     }
 
+    public static func structureAttempt(
+        type: StructureType,
+        version: MinecraftVersion,
+        seed: Int64,
+        regionX: Int32,
+        regionZ: Int32
+    ) throws -> StructureLocation? {
+        guard let requestedCType = type.cubiomesType else {
+            throw CubiomesError.unsupportedStructureConfig(type, version: version)
+        }
+
+        let config = try CubiomesWorld.structureConfig(for: type, version: version)
+        var pos = Pos()
+        guard getStructurePos(requestedCType, version.rawValue, UInt64(bitPattern: seed), regionX, regionZ, &pos) != 0 else {
+            return nil
+        }
+        return StructureLocation(
+            type: type,
+            blockX: Int32(pos.x),
+            blockZ: Int32(pos.z),
+            regionX: regionX,
+            regionZ: regionZ,
+            dimension: config.dimension,
+            isViable: false
+        )
+    }
+
+    public static func isViableFeatureBiome(
+        type: StructureType,
+        version: MinecraftVersion,
+        biomeID: Int32
+    ) throws -> Bool {
+        guard let requestedCType = type.cubiomesType, type.supportsFeatureBiomeCheck else {
+            throw CubiomesError.unsupportedStructureBiomeCheck(type, version: version)
+        }
+        return CCubiomes.isViableFeatureBiome(version.rawValue, requestedCType, biomeID) != 0
+    }
+
+    public static func isViableStructurePosition(
+        type: StructureType,
+        version: MinecraftVersion,
+        seed: Int64,
+        dimension: MinecraftDimension,
+        blockX: Int32,
+        blockZ: Int32
+    ) throws -> Bool {
+        guard let requestedCType = type.cubiomesType else {
+            throw CubiomesError.unsupportedStructure(type, version: version, dimension: dimension)
+        }
+        var generator = Generator()
+        setupGenerator(&generator, version.rawValue, 0)
+        applySeed(&generator, dimension.rawValue, UInt64(bitPattern: seed))
+        return isViableStructurePos(requestedCType, &generator, blockX, blockZ, 0) != 0
+    }
+
+    public static func isViableStructureTerrain(
+        type: StructureType,
+        version: MinecraftVersion,
+        seed: Int64,
+        blockX: Int32,
+        blockZ: Int32
+    ) throws -> Bool {
+        guard let requestedCType = type.cubiomesType else {
+            throw CubiomesError.unsupportedStructure(type, version: version, dimension: .overworld)
+        }
+        var generator = Generator()
+        setupGenerator(&generator, version.rawValue, 0)
+        applySeed(&generator, MinecraftDimension.overworld.rawValue, UInt64(bitPattern: seed))
+        return CCubiomes.isViableStructureTerrain(requestedCType, &generator, blockX, blockZ) != 0
+    }
+
     public static func estimatedSpawn(version: MinecraftVersion, seed: Int64) -> BlockPosition {
         CubiomesWorld(version: version, seed: seed, dimension: .overworld).estimatedSpawn()
     }
@@ -918,6 +1262,68 @@ public enum CubiomesCore {
 
     public static func isSlimeChunk(seed: Int64, chunkX: Int32, chunkZ: Int32) -> Bool {
         CCubiomes.isSlimeChunk(UInt64(bitPattern: seed), chunkX, chunkZ) != 0
+    }
+
+    public static func endIslands(version: MinecraftVersion, seed: Int64, chunkX: Int32, chunkZ: Int32) -> [EndIslandInfo] {
+        var islands = Array(repeating: EndIsland(), count: 2)
+        let count = islands.withUnsafeMutableBufferPointer {
+            getEndIslands($0.baseAddress, version.rawValue, UInt64(bitPattern: seed), chunkX, chunkZ)
+        }
+        guard count > 0 else {
+            return []
+        }
+        return islands.prefix(Int(count)).map {
+            EndIslandInfo(x: Int32($0.x), y: Int32($0.y), z: Int32($0.z), radius: Int32($0.r))
+        }
+    }
+
+    public static func fixedEndGateways(version: MinecraftVersion, seed: Int64) -> [BlockPosition] {
+        var positions = Array(repeating: Pos(), count: 20)
+        positions.withUnsafeMutableBufferPointer {
+            getFixedEndGateways(version.rawValue, UInt64(bitPattern: seed), $0.baseAddress)
+        }
+        return positions.map { BlockPosition(x: Int32($0.x), z: Int32($0.z)) }
+    }
+
+    public static func linkedEndGateway(version: MinecraftVersion, seed: Int64, source: BlockPosition) -> EndGatewayLink {
+        var endNoise = EndNoise()
+        setEndSeed(&endNoise, version.rawValue, UInt64(bitPattern: seed))
+        var surfaceNoise = SurfaceNoise()
+        initSurfaceNoise(&surfaceNoise, MinecraftDimension.end.rawValue, UInt64(bitPattern: seed))
+        let destination = getLinkedGatewayPos(
+            &endNoise,
+            &surfaceNoise,
+            UInt64(bitPattern: seed),
+            Pos(x: source.x, z: source.z)
+        )
+        return EndGatewayLink(
+            source: source,
+            destination: BlockPosition(x: Int32(destination.x), z: Int32(destination.z))
+        )
+    }
+
+    public static func endSurfaceHeight(version: MinecraftVersion, seed: Int64, x: Int32, z: Int32) -> Int32 {
+        Int32(getEndSurfaceHeight(version.rawValue, UInt64(bitPattern: seed), x, z))
+    }
+
+    public static func movedStructureSeed(baseSeed: Int64, regionX: Int32, regionZ: Int32) -> Int64 {
+        Int64(bitPattern: moveStructure(UInt64(bitPattern: baseSeed), regionX, regionZ))
+    }
+
+    public static func shadowSeed(seed: Int64) -> Int64 {
+        Int64(bitPattern: getShadow(UInt64(bitPattern: seed)))
+    }
+
+    public static func chunkGenerationSeed(seed: Int64, chunkX: Int32, chunkZ: Int32) -> Int64 {
+        Int64(bitPattern: chunkGenerateRnd(UInt64(bitPattern: seed), chunkX, chunkZ))
+    }
+
+    public static func climateParameterExtremes(version: MinecraftVersion) -> ClimateParameterRanges? {
+        climateRanges(from: getBiomeParaExtremes(version.rawValue))
+    }
+
+    public static func climateParameterLimits(version: MinecraftVersion, biomeID: Int32) -> ClimateParameterRanges? {
+        climateRanges(from: getBiomeParaLimits(version.rawValue, biomeID))
     }
 
     public static func biome(
@@ -941,6 +1347,35 @@ public enum CubiomesCore {
         let world = CubiomesWorld(version: version, seed: seed, dimension: dimension)
         return try world.biome(x: x, y: y, z: z)
     }
+}
+
+private extension StructureType {
+    var supportsFeatureBiomeCheck: Bool {
+        switch self {
+        case .desertPyramid, .jungleTemple, .swampHut, .igloo, .oceanRuin, .shipwreck,
+             .ruinedPortal, .netherRuinedPortal, .ancientCity, .treasure, .mineshaft,
+             .desertWell, .fortress, .bastion, .endCity, .endGateway, .trailRuins,
+             .trialChambers, .monument, .outpost, .village, .mansion:
+            return true
+        case .feature, .geode, .endIsland, .stronghold, .slimeChunk:
+            return false
+        }
+    }
+}
+
+private func climateRanges(from pointer: UnsafePointer<Int32>?) -> ClimateParameterRanges? {
+    guard let pointer else {
+        return nil
+    }
+    let values = UnsafeBufferPointer(start: pointer, count: 12).map { Int32($0) }
+    return ClimateParameterRanges(
+        temperature: values[0]...values[1],
+        humidity: values[2]...values[3],
+        continentalness: values[4]...values[5],
+        erosion: values[6]...values[7],
+        depth: values[8]...values[9],
+        weirdness: values[10]...values[11]
+    )
 }
 
 private func floorDiv(_ value: Int32, _ divisor: Int32) -> Int32 {

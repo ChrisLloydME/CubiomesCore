@@ -103,6 +103,26 @@ final class CubiomesCoreTests: XCTestCase {
         XCTAssertNil(info.mutatedID)
     }
 
+    func testBiomeClassificationAndTerrainInfoWrapPureCubiomesHelpers() throws {
+        let badlands = CubiomesCore.biomeClassification(id: 37)
+        XCTAssertTrue(badlands.isMesa)
+        XCTAssertFalse(badlands.isOceanic)
+
+        let ocean = CubiomesCore.biomeClassification(id: 0)
+        XCTAssertTrue(ocean.isShallowOcean)
+        XCTAssertTrue(ocean.isOceanic)
+        XCTAssertFalse(ocean.isDeepOcean)
+
+        let plains = try CubiomesCore.biomeTerrainInfo(id: 1)
+        XCTAssertEqual(plains.depth, 0.125, accuracy: 0.0001)
+        XCTAssertEqual(plains.scale, 0.05, accuracy: 0.0001)
+        XCTAssertEqual(plains.grass, 62)
+
+        XCTAssertThrowsError(try CubiomesCore.biomeTerrainInfo(id: 999)) { error in
+            XCTAssertEqual(error as? CubiomesError, .unsupportedBiome(id: 999))
+        }
+    }
+
     func testApproximateHeightGridProducesStableShape() throws {
         let heights = try CubiomesCore.approximateHeights(
             version: .v1_18,
@@ -118,6 +138,40 @@ final class CubiomesCoreTests: XCTestCase {
         XCTAssertEqual(heights.biomeIDs.count, 4)
         XCTAssertNotNil(heights.heightAt(x: 1, z: 1))
         XCTAssertNotNil(heights.biomeIDAt(x: 1, z: 1))
+    }
+
+    func testSpecializedNetherAndEndBiomeMapsProduceStableValues() throws {
+        let nether = try CubiomesCore.netherBiomes(seed: 262, originX: 0, originZ: 0, width: 3, height: 2)
+        XCTAssertEqual(nether.ids, [171, 171, 171, 171, 171, 171])
+        XCTAssertEqual(nether.idAt(x: 2, z: 1), 171)
+
+        let endAtScale4 = try CubiomesCore.endBiomes(
+            version: .v1_18,
+            seed: 262,
+            originX: 0,
+            originZ: 0,
+            width: 3,
+            height: 2,
+            scale: 4
+        )
+        XCTAssertEqual(endAtScale4.ids, [9, 9, 9, 9, 9, 9])
+
+        let endAtScale16 = try CubiomesCore.endBiomes(
+            version: .v1_18,
+            seed: 262,
+            originX: 0,
+            originZ: 0,
+            width: 3,
+            height: 2,
+            scale: 16
+        )
+        XCTAssertEqual(endAtScale16.ids, [9, 9, 9, 9, 9, 9])
+
+        XCTAssertThrowsError(
+            try CubiomesCore.endBiomes(version: .v1_18, seed: 262, originX: 0, originZ: 0, width: 1, height: 1, scale: 1)
+        ) { error in
+            XCTAssertEqual(error as? CubiomesError, .unsupportedBiomeScale(scale: 1, supported: [4, 16]))
+        }
     }
 
     func testStructureConfigExposesNewConfiguredStructureTypes() throws {
@@ -136,6 +190,50 @@ final class CubiomesCoreTests: XCTestCase {
         XCTAssertTrue(strongholds.allSatisfy { $0.type == .stronghold && $0.dimension == .overworld })
         _ = CubiomesCore.firstStrongholdApproximation(version: .v1_18, seed: 262)
         _ = CubiomesCore.isSlimeChunk(seed: 262, chunkX: 0, chunkZ: 0)
+    }
+
+    func testStructureAttemptAndViabilityHelpersExposeSingleRegionChecks() throws {
+        let attempt = try XCTUnwrap(CubiomesCore.structureAttempt(
+            type: .village,
+            version: .v1_18,
+            seed: 262,
+            regionX: 0,
+            regionZ: 0
+        ))
+
+        XCTAssertEqual(attempt.type, .village)
+        XCTAssertEqual(attempt.blockX, 192)
+        XCTAssertEqual(attempt.blockZ, 208)
+        XCTAssertEqual(attempt.dimension, .overworld)
+        XCTAssertFalse(attempt.isViable)
+
+        XCTAssertTrue(try CubiomesCore.isViableFeatureBiome(type: .village, version: .v1_18, biomeID: 1))
+        XCTAssertFalse(try CubiomesCore.isViableFeatureBiome(type: .village, version: .v1_18, biomeID: 14))
+        XCTAssertFalse(try CubiomesCore.isViableStructurePosition(
+            type: .village,
+            version: .v1_18,
+            seed: 262,
+            dimension: .overworld,
+            blockX: 0,
+            blockZ: 0
+        ))
+        XCTAssertTrue(try CubiomesCore.isViableStructureTerrain(
+            type: .village,
+            version: .v1_18,
+            seed: 262,
+            blockX: 192,
+            blockZ: 208
+        ))
+
+        XCTAssertThrowsError(try CubiomesCore.structureAttempt(
+            type: .stronghold,
+            version: .v1_18,
+            seed: 262,
+            regionX: 0,
+            regionZ: 0
+        )) { error in
+            XCTAssertEqual(error as? CubiomesError, .unsupportedStructureConfig(.stronghold, version: .v1_18))
+        }
     }
 
     func testStructureOverlayAPIProducesStableFieldsInsideRect() throws {
@@ -165,5 +263,56 @@ final class CubiomesCoreTests: XCTestCase {
         )
 
         XCTAssertTrue(structures.isEmpty)
+    }
+
+    func testEndSpecificHelpersReturnStableGatewayAndIslandData() {
+        let gateways = CubiomesCore.fixedEndGateways(version: .v1_18, seed: 262)
+        XCTAssertEqual(gateways.count, 20)
+        XCTAssertEqual(gateways.prefix(3), [
+            BlockPosition(x: -96, z: -1),
+            BlockPosition(x: -57, z: 77),
+            BlockPosition(x: 77, z: 56),
+        ])
+
+        let link = CubiomesCore.linkedEndGateway(version: .v1_18, seed: 262, source: gateways[0])
+        XCTAssertEqual(link.source, BlockPosition(x: -96, z: -1))
+        XCTAssertEqual(link.destination, BlockPosition(x: -1137, z: 0))
+        XCTAssertEqual(CubiomesCore.endSurfaceHeight(version: .v1_18, seed: 262, x: 0, z: 0), 62)
+
+        let islands = CubiomesCore.endIslands(version: .v1_18, seed: 262, chunkX: -4, chunkZ: 1)
+        XCTAssertEqual(islands, [EndIslandInfo(x: -61, y: 70, z: 28, radius: 4)])
+    }
+
+    func testSeedAndClimateHelpersExposeStablePureCubiomesValues() {
+        XCTAssertEqual(CubiomesCore.shadowSeed(seed: 262), -7_379_792_620_528_906_481)
+        XCTAssertEqual(CubiomesCore.movedStructureSeed(baseSeed: 262, regionX: -1, regionZ: -1), 474_771_116_515)
+        XCTAssertEqual(CubiomesCore.chunkGenerationSeed(seed: 262, chunkX: 1, chunkZ: -2), 181_162_256_108_945)
+
+        let extremes = CubiomesCore.climateParameterExtremes(version: .v1_18)
+        XCTAssertEqual(extremes?.temperature, -4501...5500)
+        XCTAssertEqual(extremes?.depth, 1000...10500)
+        XCTAssertNil(CubiomesCore.climateParameterExtremes(version: .v1_17))
+
+        let plains = CubiomesCore.climateParameterLimits(version: .v1_18, biomeID: 1)
+        XCTAssertNotNil(plains)
+        XCTAssertNil(CubiomesCore.climateParameterLimits(version: .v1_17, biomeID: 1))
+    }
+
+    func testLargeAreaBiomeGenerationDoesNotObviouslyRegress() throws {
+        let start = Date()
+        let grid = try CubiomesCore.biomes(
+            version: .v1_18,
+            seed: 262,
+            dimension: .overworld,
+            originX: -2048,
+            originZ: -2048,
+            width: 128,
+            height: 128,
+            scale: 4,
+            y: 63
+        )
+
+        XCTAssertEqual(grid.ids.count, 16_384)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 10.0)
     }
 }
