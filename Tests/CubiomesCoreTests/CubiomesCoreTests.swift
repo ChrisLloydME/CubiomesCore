@@ -298,6 +298,250 @@ final class CubiomesCoreTests: XCTestCase {
         XCTAssertNil(CubiomesCore.climateParameterLimits(version: .v1_17, biomeID: 1))
     }
 
+    func testAClimatePossibilityUsesStableInternalSwiftTables() throws {
+        let mushroomRanges = try XCTUnwrap(CubiomesCore.climateParameterLimits(version: .v1_18, biomeID: 14))
+        let possible = CubiomesCore.possibleBiomesForClimate(ClimateBiomePossibilityRequest(
+            version: .v1_18,
+            ranges: mushroomRanges
+        ))
+
+        XCTAssertEqual(possible.request.ranges, mushroomRanges)
+        XCTAssertTrue(possible.biomeIDs.contains(14))
+        XCTAssertEqual(possible.biomeIDs, possible.biomeIDs.sorted())
+
+        let cherryRanges = try XCTUnwrap(CubiomesCore.climateParameterLimits(version: .v1_20, biomeID: 185))
+        XCTAssertEqual(cherryRanges.temperature, -4500...2000)
+        XCTAssertEqual(cherryRanges.weirdness, 2666...Int32.max)
+        XCTAssertNil(CubiomesCore.climateParameterLimits(version: .v1_18, biomeID: 185))
+        XCTAssertTrue(CubiomesCore.possibleBiomesForClimate(ClimateBiomePossibilityRequest(
+            version: .v1_20,
+            ranges: cherryRanges
+        )).biomeIDs.contains(185))
+
+        let grove19 = try XCTUnwrap(CubiomesCore.climateParameterLimits(version: .v1_19, biomeID: 178))
+        let grove20 = try XCTUnwrap(CubiomesCore.climateParameterLimits(version: .v1_20, biomeID: 178))
+        XCTAssertEqual(grove19.depth, Int32.min...10499)
+        XCTAssertEqual(grove20.depth, Int32.min...10500)
+
+        let paleGarden = try XCTUnwrap(CubiomesCore.climateParameterLimits(version: .v1_21, biomeID: 186))
+        XCTAssertEqual(paleGarden.humidity, 3000...Int32.max)
+        XCTAssertTrue(CubiomesCore.possibleBiomesForClimate(ClimateBiomePossibilityRequest(
+            version: .v1_21,
+            ranges: paleGarden
+        )).biomeIDs.contains(186))
+    }
+
+    func testClimatePossibilityConditionRunsThroughSeedFinder() throws {
+        let mushroomRanges = try XCTUnwrap(CubiomesCore.climateParameterLimits(version: .v1_18, biomeID: 14))
+        let climateMatches = try CubiomesCore.findSeeds(SeedSearchRequest(
+            version: .v1_18,
+            seeds: [262],
+            dimension: .overworld,
+            conditions: [.biomeIsPossibleForClimate(relativeX: 0, relativeZ: 0, y: 63, ranges: mushroomRanges)]
+        ))
+        XCTAssertEqual(climateMatches, [262])
+    }
+
+    func testLargestRectangleAnalysisExposeStableShapes() throws {
+        let rectangle = try CubiomesCore.largestRectangle(LargestRectangleAnalysisRequest(
+            ids: [
+                1, 1, 0,
+                1, 1, 1,
+                0, 1, 1,
+            ],
+            width: 3,
+            height: 3,
+            matchingID: 1
+        ))
+        XCTAssertEqual(rectangle.area, 4)
+        XCTAssertGreaterThanOrEqual(rectangle.min.x, 0)
+        XCTAssertGreaterThanOrEqual(rectangle.min.z, 0)
+        XCTAssertLessThan(rectangle.max.x, 3)
+        XCTAssertLessThan(rectangle.max.z, 3)
+
+        XCTAssertThrowsError(try CubiomesCore.largestRectangle(LargestRectangleAnalysisRequest(
+            ids: [1, 1, 1],
+            width: 2,
+            height: 2,
+            matchingID: 1
+        ))) { error in
+            XCTAssertEqual(error as? CubiomesError, .invalidGridCellCount(expected: 4, actual: 3))
+        }
+    }
+
+    func testMonteCarloBiomeSampleExposesStableFinderSemantics() throws {
+        let request = MonteCarloBiomeSampleRequest(
+            version: .v1_18,
+            seed: 262,
+            dimension: .overworld,
+            originX: -8,
+            originZ: -8,
+            width: 16,
+            height: 16,
+            scale: 1,
+            y: 63,
+            requiredCoverage: 0.9,
+            confidence: 0.95,
+            allowedBiomeIDs: [14]
+        )
+        let sample = try CubiomesCore.monteCarloBiomeSample(request)
+
+        XCTAssertEqual(sample.request, request)
+        XCTAssertTrue(sample.matched)
+        XCTAssertGreaterThan(sample.evaluatedSampleCount, 0)
+        XCTAssertEqual(sample.successfulSampleCount, sample.evaluatedSampleCount)
+        XCTAssertEqual(sample.skippedSampleCount, 0)
+        XCTAssertNotNil(sample.averageSuccessPosition)
+
+        let finderMatches = try CubiomesCore.findSeeds(SeedSearchRequest(
+            version: .v1_18,
+            seeds: [1, 262],
+            dimension: .overworld,
+            conditions: [
+                .monteCarloBiomeSample(
+                    relativeRect: StructureRect(originX: -8, originZ: -8, width: 16, height: 16),
+                    scale: 1,
+                    y: 63,
+                    requiredCoverage: 0.9,
+                    confidence: 0.95,
+                    allowedBiomeIDs: [14],
+                    excludedBiomeIDs: []
+                ),
+            ],
+            maximumResults: 1
+        ))
+        XCTAssertEqual(finderMatches, [262])
+
+        XCTAssertThrowsError(try CubiomesCore.monteCarloBiomeSample(MonteCarloBiomeSampleRequest(
+            version: .v1_18,
+            seed: 262,
+            dimension: .overworld,
+            originX: 0,
+            originZ: 0,
+            width: 1,
+            height: 1,
+            requiredCoverage: 0,
+            confidence: 0.95,
+            allowedBiomeIDs: [14]
+        ))) { error in
+            XCTAssertEqual(error as? CubiomesError, .invalidMonteCarloParameters)
+        }
+    }
+
+    func testMonteCarloClimateNoiseSampleExposesStableShapeAndErrors() throws {
+        let request = MonteCarloClimateNoiseSampleRequest(
+            version: .v1_18,
+            seed: 262,
+            originX: -8,
+            originZ: -8,
+            width: 16,
+            height: 16,
+            scale: 4,
+            parameter: .temperature,
+            allowed: Int32.min...Int32.max,
+            requiredCoverage: 0.9,
+            confidence: 0.95
+        )
+        let sample = try CubiomesCore.monteCarloClimateNoiseSample(request)
+
+        XCTAssertEqual(sample.request, request)
+        XCTAssertTrue(sample.matched)
+        XCTAssertGreaterThan(sample.evaluatedSampleCount, 0)
+        XCTAssertEqual(sample.successfulSampleCount, sample.evaluatedSampleCount)
+        XCTAssertNotNil(sample.averageSuccessPosition)
+
+        let finderMatches = try CubiomesCore.findSeeds(SeedSearchRequest(
+            version: .v1_18,
+            seeds: [262],
+            dimension: .overworld,
+            conditions: [
+                .monteCarloClimateNoiseSample(
+                    relativeRect: StructureRect(originX: -32, originZ: -32, width: 64, height: 64),
+                    scale: 4,
+                    parameter: .temperature,
+                    allowed: Int32.min...Int32.max,
+                    requiredCoverage: 0.9,
+                    confidence: 0.95
+                ),
+            ]
+        ))
+        XCTAssertEqual(finderMatches, [262])
+
+        XCTAssertThrowsError(try CubiomesCore.monteCarloClimateNoiseSample(MonteCarloClimateNoiseSampleRequest(
+            version: .v1_17,
+            seed: 262,
+            originX: 0,
+            originZ: 0,
+            width: 1,
+            height: 1,
+            parameter: .temperature,
+            allowed: Int32.min...Int32.max,
+            requiredCoverage: 0.9,
+            confidence: 0.95
+        ))) { error in
+            XCTAssertEqual(error as? CubiomesError, .unsupportedClimateNoise(.v1_17))
+        }
+    }
+
+    func testClimateNoiseRangeExposesStableShapeAndFinderCondition() throws {
+        let request = ClimateNoiseRangeRequest(
+            version: .v1_18,
+            seed: 262,
+            originX: -8,
+            originZ: -8,
+            width: 8,
+            height: 8,
+            parameter: .temperature
+        )
+        let range = try CubiomesCore.climateNoiseRange(request)
+
+        XCTAssertEqual(range.request, request)
+        XCTAssertLessThan(range.minimum, range.maximum)
+        XCTAssertLessThanOrEqual(range.scaledMinimum, range.scaledMaximum)
+        XCTAssertTrue((-32..<0).contains(range.minimumPosition.x))
+        XCTAssertTrue((-32..<0).contains(range.minimumPosition.z))
+        XCTAssertTrue((-32..<0).contains(range.maximumPosition.x))
+        XCTAssertTrue((-32..<0).contains(range.maximumPosition.z))
+
+        let finderMatches = try CubiomesCore.findSeeds(SeedSearchRequest(
+            version: .v1_18,
+            seeds: [262],
+            dimension: .overworld,
+            conditions: [
+                .climateNoiseRange(
+                    relativeRect: StructureRect(originX: -32, originZ: -32, width: 32, height: 32),
+                    parameter: .temperature,
+                    allowed: Int32.min...Int32.max
+                ),
+            ]
+        ))
+        XCTAssertEqual(finderMatches, [262])
+
+        XCTAssertThrowsError(try CubiomesCore.climateNoiseRange(ClimateNoiseRangeRequest(
+            version: .v1_17,
+            seed: 262,
+            originX: 0,
+            originZ: 0,
+            width: 1,
+            height: 1,
+            parameter: .temperature
+        ))) { error in
+            XCTAssertEqual(error as? CubiomesError, .unsupportedClimateNoise(.v1_17))
+        }
+
+        XCTAssertThrowsError(try CubiomesCore.climateNoiseRange(ClimateNoiseRangeRequest(
+            version: .v1_18,
+            seed: 262,
+            originX: 0,
+            originZ: 0,
+            width: 1,
+            height: 1,
+            parameter: .depth
+        ))) { error in
+            XCTAssertEqual(error as? CubiomesError, .unsupportedClimateNoiseParameter(.depth))
+        }
+    }
+
     func testMapTileCombinesBiomeHeightAndStructureOverlayData() throws {
         let tile = try CubiomesCore.mapTile(MapTileRequest(
             version: .v1_18,
@@ -435,6 +679,131 @@ final class CubiomesCoreTests: XCTestCase {
         XCTAssertTrue(cancelled.isEmpty)
     }
 
+    func testQueryTreeLogicScaleProgressAndCancellationSemantics() throws {
+        let logicalSeedMatches = try CubiomesCore.findSeeds(SeedSearchRequest(
+            version: .v1_18,
+            seeds: [1, 262],
+            dimension: .overworld,
+            conditions: [
+                .all([
+                    .any([
+                        .biomeAt(relativeX: 0, relativeZ: 0, y: 63, allowedBiomeIDs: [14]),
+                        .biomeAt(relativeX: 0, relativeZ: 0, y: 63, allowedBiomeIDs: [1]),
+                    ]),
+                    .not(.biomeAt(relativeX: 0, relativeZ: 0, y: 63, allowedBiomeIDs: [1])),
+                ]),
+            ],
+            maximumResults: 1
+        ))
+        XCTAssertEqual(logicalSeedMatches, [262])
+
+        let shiftedLocationMatches = try CubiomesCore.findLocations(LocationSearchRequest(
+            version: .v1_18,
+            seeds: [262],
+            dimension: .overworld,
+            positions: [BlockPosition(x: 16, z: 0)],
+            conditions: [
+                .at(
+                    relativeX: -16,
+                    relativeZ: 0,
+                    condition: .scaledCoordinates(
+                        numerator: 1,
+                        denominator: 1,
+                        condition: .biomeAt(relativeX: 0, relativeZ: 0, y: 63, allowedBiomeIDs: [14])
+                    )
+                ),
+            ]
+        ))
+        XCTAssertEqual(shiftedLocationMatches, [LocationSearchResult(seed: 262, position: BlockPosition(x: 16, z: 0))])
+
+        var progressEvents: [CubiomesSearchProgress] = []
+        let token = CubiomesSearchCancellationToken()
+        let cancelledAfterFirstCheck = try CubiomesCore.findSeeds(SeedSearchRequest(
+            version: .v1_18,
+            seeds: [1, 262],
+            dimension: .overworld,
+            conditions: [.any([.biomeAt(relativeX: 0, relativeZ: 0, y: 63, allowedBiomeIDs: [14])])]
+        ), cancellationToken: token) { progress in
+            progressEvents.append(progress)
+            token.cancel()
+        }
+        XCTAssertTrue(cancelledAfterFirstCheck.isEmpty)
+        XCTAssertEqual(progressEvents.count, 1)
+        XCTAssertEqual(progressEvents[0].kind, .seed)
+        XCTAssertEqual(progressEvents[0].checkedSeeds, 1)
+        XCTAssertEqual(progressEvents[0].matchedResults, 0)
+
+        XCTAssertThrowsError(try CubiomesCore.findSeeds(SeedSearchRequest(
+            version: .v1_18,
+            seeds: [262],
+            dimension: .overworld,
+            conditions: [
+                .scaledCoordinates(
+                    numerator: 1,
+                    denominator: 0,
+                    condition: .biomeAt(relativeX: 0, relativeZ: 0, y: 63, allowedBiomeIDs: [14])
+                ),
+            ]
+        ))) { error in
+            XCTAssertEqual(error as? CubiomesError, .invalidCoordinateScale(numerator: 1, denominator: 0))
+        }
+    }
+
+    func testQueryTreeNamedReferencesValidateMissingAndRecursiveBranches() throws {
+        let mushroomAtOrigin = CubiomesQueryCondition.biomeAt(
+            relativeX: 0,
+            relativeZ: 0,
+            y: 63,
+            allowedBiomeIDs: [14]
+        )
+        let matches = try CubiomesCore.findSeeds(SeedSearchRequest(
+            version: .v1_18,
+            seeds: [1, 262],
+            dimension: .overworld,
+            conditions: [.reference("mushroom-origin")],
+            conditionReferences: ["mushroom-origin": mushroomAtOrigin],
+            maximumResults: 1
+        ))
+        XCTAssertEqual(matches, [262])
+
+        let shiftedLocationMatches = try CubiomesCore.findLocations(LocationSearchRequest(
+            version: .v1_18,
+            seeds: [262],
+            dimension: .overworld,
+            positions: [BlockPosition(x: 16, z: 0)],
+            conditions: [
+                .at(relativeX: -16, relativeZ: 0, condition: .reference("mushroom-origin")),
+            ],
+            conditionReferences: ["mushroom-origin": mushroomAtOrigin],
+            maximumResults: 1
+        ))
+        XCTAssertEqual(shiftedLocationMatches, [
+            LocationSearchResult(seed: 262, position: BlockPosition(x: 16, z: 0)),
+        ])
+
+        XCTAssertThrowsError(try CubiomesCore.findSeeds(SeedSearchRequest(
+            version: .v1_18,
+            seeds: [262],
+            dimension: .overworld,
+            conditions: [.reference("missing")]
+        ))) { error in
+            XCTAssertEqual(error as? CubiomesError, .missingConditionReference("missing"))
+        }
+
+        XCTAssertThrowsError(try CubiomesCore.findSeeds(SeedSearchRequest(
+            version: .v1_18,
+            seeds: [262],
+            dimension: .overworld,
+            conditions: [.reference("a")],
+            conditionReferences: [
+                "a": .reference("b"),
+                "b": .reference("a"),
+            ]
+        ))) { error in
+            XCTAssertEqual(error as? CubiomesError, .recursiveConditionReference("a"))
+        }
+    }
+
     func testStructureVariantPiecesAndQuadSearchBoundaries() throws {
         let variant = try CubiomesCore.structureVariant(
             type: .village,
@@ -465,17 +834,92 @@ final class CubiomesCoreTests: XCTestCase {
             XCTAssertEqual(error as? CubiomesError, .unsupportedStructurePieces(.village))
         }
 
-        XCTAssertThrowsError(try CubiomesCore.quadStructureClusters(QuadStructureSearchRequest(
+        let monumentConfig = try CubiomesCore.structureConfig(type: .monument, version: .v1_18)
+        let quadMonumentSeed = 775_390_004_760 - Int64(monumentConfig.salt)
+        let quadMonuments = try CubiomesCore.quadStructureClusters(QuadStructureSearchRequest(
             type: .monument,
             version: .v1_18,
-            seed: 262,
+            seed: quadMonumentSeed,
             regionX: 0,
             regionZ: 0,
             regionWidth: 1,
-            regionHeight: 1
-        ))) { error in
-            XCTAssertEqual(error as? CubiomesError, .unsupportedQuadSearch(.monument, version: .v1_18))
-        }
+            regionHeight: 1,
+            maximumCount: 1,
+            requiresViableBiomes: false
+        ))
+        XCTAssertEqual(quadMonuments.count, 1)
+        XCTAssertEqual(quadMonuments[0].type, .monument)
+        XCTAssertEqual(quadMonuments[0].attempts.count, 4)
+        XCTAssertTrue(quadMonuments[0].attempts.allSatisfy { $0.type == .monument && $0.dimension == .overworld })
+
+        let highCoverageMonuments = try CubiomesCore.quadStructureClusters(QuadStructureSearchRequest(
+            type: .monument,
+            version: .v1_18,
+            seed: quadMonumentSeed,
+            regionX: 0,
+            regionZ: 0,
+            regionWidth: 1,
+            regionHeight: 1,
+            maximumCount: 1,
+            requiresViableBiomes: false,
+            monumentCoverage: .ninetyFivePercent
+        ))
+        XCTAssertEqual(highCoverageMonuments.count, 1)
+
+        let ninetyOnlySeed = 35_634_735_275 - Int64(monumentConfig.salt)
+        let noHighCoverageMonuments = try CubiomesCore.quadStructureClusters(QuadStructureSearchRequest(
+            type: .monument,
+            version: .v1_18,
+            seed: ninetyOnlySeed,
+            regionX: 0,
+            regionZ: 0,
+            regionWidth: 1,
+            regionHeight: 1,
+            maximumCount: 1,
+            requiresViableBiomes: false,
+            monumentCoverage: .ninetyFivePercent
+        ))
+        XCTAssertTrue(noHighCoverageMonuments.isEmpty)
+    }
+
+    func testStructureCombinationSearchUsesStableCountsAndOrdering() throws {
+        let rect = StructureRect(originX: -4096, originZ: -4096, width: 8192, height: 8192)
+        let combinations = try CubiomesCore.findStructureCombinations(StructureCombinationSearchRequest(
+            version: .v1_18,
+            seeds: [1, 262],
+            dimension: .overworld,
+            rect: rect,
+            requirements: [
+                StructureCombinationRequirement(type: .village, minimumCount: 1),
+                StructureCombinationRequirement(type: .ruinedPortal, minimumCount: 1),
+            ],
+            maximumResults: 1
+        ))
+
+        XCTAssertEqual(combinations.count, 1)
+        XCTAssertEqual(combinations[0].seed, 1)
+        XCTAssertGreaterThanOrEqual(combinations[0].countsByType[.village, default: 0], 1)
+        XCTAssertGreaterThanOrEqual(combinations[0].countsByType[.ruinedPortal, default: 0], 1)
+        XCTAssertEqual(combinations[0].matchingLocations, combinations[0].matchingLocations.sorted {
+            ($0.blockZ, $0.blockX, String(describing: $0.type)) <
+                ($1.blockZ, $1.blockX, String(describing: $1.type))
+        })
+
+        let finderMatches = try CubiomesCore.findSeeds(SeedSearchRequest(
+            version: .v1_18,
+            seeds: [262],
+            dimension: .overworld,
+            conditions: [
+                .structureCombination(
+                    relativeRect: rect,
+                    requirements: [
+                        StructureCombinationRequirement(type: .village, minimumCount: 1),
+                        StructureCombinationRequirement(type: .ruinedPortal, minimumCount: 1),
+                    ]
+                ),
+            ]
+        ))
+        XCTAssertEqual(finderMatches, [262])
     }
 
     func testNetherVolumeAndEndAnalysisExposeDimensionSpecificShapes() throws {
@@ -540,6 +984,30 @@ final class CubiomesCoreTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(start), 10.0)
     }
 
+    func testMediumAreaLocationFinderRegressionDoesNotObviouslyRegress() throws {
+        let start = Date()
+        let samples = CubiomesCore.locationSamples(mode: .squareSpiral, count: 512, spacing: 64)
+        var progressEvents: [CubiomesSearchProgress] = []
+        let matches = try CubiomesCore.findLocations(LocationSearchRequest(
+            version: .v1_18,
+            seeds: [262],
+            dimension: .overworld,
+            positions: samples,
+            conditions: [
+                .approximateHeight(relativeX: 0, relativeZ: 0, allowed: Int32.min...Int32.max),
+            ],
+            maximumResults: 64
+        ), cancellationToken: nil) { progress in
+            progressEvents.append(progress)
+        }
+
+        XCTAssertEqual(matches.count, 64)
+        XCTAssertEqual(matches.map(\.position), Array(samples.prefix(64)))
+        XCTAssertEqual(progressEvents.last?.matchedResults, 64)
+        XCTAssertEqual(progressEvents.last?.checkedLocations, 64)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 10.0)
+    }
+
     func testLargeAreaBiomeGenerationDoesNotObviouslyRegress() throws {
         let start = Date()
         let grid = try CubiomesCore.biomes(
@@ -556,5 +1024,25 @@ final class CubiomesCoreTests: XCTestCase {
 
         XCTAssertEqual(grid.ids.count, 16_384)
         XCTAssertLessThan(Date().timeIntervalSince(start), 10.0)
+    }
+
+    func testArchitectureDocumentationAndSourceBoundariesStayInPlace() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let docs = try String(contentsOf: packageRoot.appendingPathComponent("Docs/CubiomesCoreArchitecture.md"))
+        XCTAssertTrue(docs.contains("CoreTypes.swift"))
+        XCTAssertTrue(docs.contains("InternalCubiomesBridge.swift"))
+        XCTAssertTrue(docs.contains("CubiomesSearchCancellationToken"))
+        XCTAssertTrue(docs.contains("deferred"))
+
+        let sourceFiles = try FileManager.default.contentsOfDirectory(
+            atPath: packageRoot.appendingPathComponent("Sources/CubiomesCore").path
+        )
+        XCTAssertTrue(sourceFiles.contains("CoreTypes.swift"))
+        XCTAssertTrue(sourceFiles.contains("CubiomesWorld.swift"))
+        XCTAssertTrue(sourceFiles.contains("InternalCubiomesBridge.swift"))
+        XCTAssertLessThan(sourceFiles.filter { $0.hasSuffix(".swift") }.count, 12)
     }
 }

@@ -1,113 +1,167 @@
-# Cubiomes Viewer
+# CubiomesCore
 
-Cubiomes Viewer provides a graphical interface for the efficient and flexible
-seed-finding utilities provided by [cubiomes](https://github.com/Cubitect/cubiomes)
-and a map viewer for the Minecraft biomes and structure generation.
+CubiomesCore is a Swift Package that wraps the bundled
+[cubiomes](https://github.com/Cubitect/cubiomes) C library behind Swift domain
+APIs. It is meant for macOS frontends that need Minecraft Java Edition seed,
+biome, structure, and location-finder logic without pulling in the Cubiomes
+Viewer Qt application.
 
-The tool is designed for high performance and supports Minecraft Java Edition
-main releases up to 1.21.
+The package keeps cubiomes generator, noise, filter, callback, RNG, cache, and
+linked-list lifetimes inside Swift calls. Public APIs use Swift request and
+result models instead of exposing the C functions one by one.
 
+## What It Covers
 
-## Download
+- Minecraft version and dimension models.
+- Single biome lookup, biome grids, map tile data, and approximate height grids.
+- Overworld, Nether, and End biome helpers.
+- Structure config, attempts, viability checks, overlays, pieces, variants,
+  strongholds, spawn, and slime chunks.
+- Seed and location finder queries with condition trees, references, logic
+  gates, coordinate scaling, progress, cancellation, and maximum-result limits.
+- Biome area statistics, include/exclude filters, biome centers, climate ranges,
+  possible-biome checks, climate noise range checks, Monte Carlo samples, and
+  largest-rectangle analysis.
+- Bounded quad-hut and quad-monument searches, including internal 90% and 95%
+  monument seed-table data.
 
-Precompiled binaries can be found in the [releases section](https://github.com/Cubitect/cubiomes-viewer/releases)
-on GitHub. This includes single file executables, which are statically
-linked against [Qt](https://www.qt.io).
+The package does not implement AppKit, Qt, rendering, screenshots, resource
+bundles, settings, Lua scripting, saved seed files, CSV export, or other
+application workflows.
 
-A Flatpak for the tool is available on
-[Flathub](https://flathub.org/apps/details/com.github.cubitect.cubiomes-viewer).
+## Requirements
 
-For Arch Linux users, the tool may be found in the
-[AUR](https://aur.archlinux.org/packages/cubiomes-viewer) thanks to
-[JakobDev](https://github.com/JakobDev).
+- Swift 5.9 or newer.
+- macOS or Linux.
+- No external package dependencies.
 
-Non-PC platforms, such as macOS, are not formally supported, but you can check
-[here](https://github.com/Cubitect/cubiomes-viewer/issues/107) for more
-information on this issue.
+## Add It to a Package
 
+```swift
+// Package.swift
+dependencies: [
+    .package(url: "https://github.com/<owner>/CubiomesCore.git", branch: "main"),
+],
+targets: [
+    .target(
+        name: "YourAppCore",
+        dependencies: ["CubiomesCore"]
+    ),
+]
+```
 
-## Build from source
+For local development, point SwiftPM at this checkout instead:
 
-Build instructions can be found in the [buildguide](buildguide.md).
+```swift
+.package(path: "../CubiomesCore")
+```
 
+## Quick Examples
 
-## Basic feature overview
+Lookup the biome at a fixed coordinate:
 
-The tool features a map viewer that outlines the biomes of the Overworld,
-Nether and End dimensions, with a wide zoom range and with toggles for each
-supported structure type. The active game version and seed can be changed
-on the fly while a matching seeds list stores a working buffer of seeds for
-examination.
+```swift
+import CubiomesCore
 
-The integrated seed finder is highly customizable, utilizing a hierarchical
-condition system that allows the user to look for features that are relative to
-one another. Conditions can be based on a varity of criteria, including
-structure placement, world spawn point and requirements for the biomes of an
-area. The search supports Quad-Hut and Quad-Monument seed generators, which can
-quickly look for seeds that include extremely rare structure constellations.
-For more complex searches, the tool provides logic gates in the form of helper
-conditions and can integrate Lua scripts to create custom filters that can be
-edited right inside the tool.
+let biome = try CubiomesCore.biome(
+    version: .v1_18,
+    seed: 262,
+    dimension: .overworld,
+    x: 0,
+    y: 63,
+    z: 0
+)
 
-It is also possible to find Locations in a fixed seed. In this mode, the
-conditions are checked against a list of trial positions instead of the
-world origin. Each location that passes the conditions is then collected
-with additional information on where each individual condition was triggered.
+print(biome.id, biome.name)
+```
 
-An analysis of the biomes and structures can be performed in their respective
-tabs. This provides information on the amount of biomes and structures that
-are available in an area, as well as their size and positions.
+Generate a biome grid in z-major row order:
 
+```swift
+let grid = try CubiomesCore.biomes(
+    version: .v1_18,
+    seed: 262,
+    dimension: .overworld,
+    originX: -64,
+    originZ: -64,
+    width: 32,
+    height: 32,
+    scale: 4,
+    y: 63
+)
 
-## Screenshots
+let centerID = grid.idAt(x: 16, z: 16)
+```
 
-Screenshots were taken of Cubiomes Viewer v4.0.
+Find seeds with a high-level query condition:
 
-![seeds](etc/screenshot_seeds-fs8.png
-"Searching for a quad-hut near a stronghold with a good biome variety")
+```swift
+let matches = try CubiomesCore.findSeeds(SeedSearchRequest(
+    version: .v1_18,
+    seeds: [1, 262],
+    dimension: .overworld,
+    conditions: [
+        .biomeAt(relativeX: 0, relativeZ: 0, y: 63, allowedBiomeIDs: [14]),
+    ],
+    maximumResults: 1
+))
+```
 
-![locations](etc/screenshot_locations-fs8.png
-"Locations in a given seed while viewing the world's height map")
+Run a location finder with cancellation and progress:
 
-![structures](etc/screenshot_structures-fs8.png
-"Examining structures in the nether")
+```swift
+let token = CubiomesSearchCancellationToken()
+let positions = CubiomesCore.locationSamples(mode: .squareSpiral, count: 512, spacing: 64)
 
+let locations = try CubiomesCore.findLocations(LocationSearchRequest(
+    version: .v1_18,
+    seeds: [262],
+    dimension: .overworld,
+    positions: positions,
+    conditions: [
+        .approximateHeight(relativeX: 0, relativeZ: 0, allowed: 60...90),
+    ],
+    maximumResults: 16
+), cancellationToken: token) { progress in
+    if progress.checkedLocations > 200 {
+        token.cancel()
+    }
+}
+```
 
-## Languages
+## Coordinate Rules
 
-The active language can be selected under `Edit preferences`, which currently includes translations for:
+- Biome grid IDs are returned in z-major row order: `ids[z * width + x]`.
+- `originX` and `originZ` use the coordinate space implied by `scale`.
+- Supported biome-grid scales are `1`, `4`, `16`, `64`, and `256`.
+- Finder positions are block positions. Relative condition coordinates are
+  added to the current seed or location position before evaluation.
+- `maximumResults == 0` returns an empty result. Negative limits throw
+  `CubiomesError.invalidSearchLimit`.
+- Cancellation returns partial results without throwing.
 
-- English
-- German
-- Chinese
+## Documentation
 
-Chinese translations are provided by [SunnySlopes](https://github.com/SunnySlopes)
-and are maintained at [his fork](https://github.com/SunnySlopes/cubiomes-viewer).
+- [API documentation](Docs/API.md)
+- [Architecture notes](Docs/CubiomesCoreArchitecture.md)
+- [Viewer non-UI coverage matrix](Docs/CubiomesCoreCoverage.md)
+- [Original cubiomes README](cubiomes/README.md)
 
+## Development
 
-## Known issues
+```sh
+swift build
+swift test
+git diff --check
+```
 
-Desert Pyramids, Jungle Temples and, to a lesser extent, Woodland Mansions can
-fail to generate in 1.18+ due to unsuitable terrain. Cubiomes will make an
-attempt to estimate the terrain based on the biomes and climate noise. However,
-expect some inaccurate results.
+The test suite uses fixed Minecraft versions, seeds, coordinates, dimensions,
+structures, condition trees, cancellation tokens, and result ordering checks.
 
-The World Spawn point for pre-1.18 versions can sometimes be off because it
-depends on the presence of a grass block, that cubiomes cannot test for.
+## License
 
+This repository keeps the existing GPLv3 license from the Cubiomes Viewer
+source tree. The bundled cubiomes C sources retain their upstream license terms.
 
-## Legal information
-
-The main code is under the GPLv3, see [LICENSE](LICENSE), while other
-components are released under their respective author licenses:
-
-- Biome and structure generation from cubiomes, licensed under MIT.
-- Cross platform [Qt](https://www.qt.io/licensing) GUI toolkit, available under (L)GPLv3.
-- Dark Qt theme derived from [QDarkStyleSheet](https://github.com/ColinDuquesnoy/QDarkStyleSheet), licensed under MIT.
-- Biome colors and icons are inspired by [Amidst](https://github.com/toolbox4minecraft/amidst), licensed under GPLv3.
-- [Lua](https://www.lua.org/license.html) is distributed under the terms of the MIT license.
-
-NOT AN OFFICIAL MINECRAFT PRODUCT.
-NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.
-
-
+This is not an official Minecraft product. It is not approved by or associated
+with Mojang or Microsoft.
